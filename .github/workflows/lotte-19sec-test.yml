@@ -10,20 +10,13 @@ on:
         default: false
 
   schedule:
-    # 한국시간 06:07
-    - cron: "7 21 * * *"
+    - cron: "7 21 * * *"      # 06:07 KST
+    - cron: "37 2 * * *"      # 11:37 KST
+    - cron: "7 8 * * *"       # 17:07 KST
+    - cron: "37 13 * * *"     # 22:37 KST
 
-    # 한국시간 11:37
-    - cron: "37 2 * * *"
-
-    # 한국시간 17:07
-    - cron: "7 8 * * *"
-
-    # 한국시간 22:37
-    - cron: "37 13 * * *"
-
-    # ★ 자동실행 테스트용 - 한국시간 18:20
-    - cron: "20 9 * * *"
+    # 임시 자동실행 테스트
+    - cron: "40 9 * * *"      # 18:40 KST -> 22:37 직전까지 감시
 
 permissions:
   contents: write
@@ -58,89 +51,84 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           CRON_SCHEDULE: ${{ github.event.schedule }}
+          EXISTING_GV_TEST: ${{ inputs.existing_gv_test }}
         run: |
-          python - <<'PY'
+          python - <<'PY' >> "$GITHUB_OUTPUT"
           import os
           from datetime import datetime, timedelta
           from zoneinfo import ZoneInfo
 
           event_name = os.environ.get("EVENT_NAME", "")
           schedule = os.environ.get("CRON_SCHEDULE", "")
+          gv_test = os.environ.get("EXISTING_GV_TEST", "").lower() == "true"
+          now = datetime.now(ZoneInfo("Asia/Seoul"))
 
-          # --------------------------------------------------
-          # 수동 실행
-          # --------------------------------------------------
-          if event_name == "workflow_dispatch":
-              seconds = 600
+          # GV 4종 수동 테스트만 10분
+          if event_name == "workflow_dispatch" and gv_test:
+              print("seconds=600")
+              raise SystemExit
 
-          # --------------------------------------------------
-          # 자동 실행
-          # --------------------------------------------------
-          else:
-              kst = ZoneInfo("Asia/Seoul")
-              now = datetime.now(kst)
+          # 정규 예약 실행
+          next_times = {
+              "7 21 * * *": (11, 37),    # 06:07 -> 11:37
+              "37 2 * * *": (17, 7),     # 11:37 -> 17:07
+              "7 8 * * *": (22, 37),     # 17:07 -> 22:37
+              "40 9 * * *": (22, 37),    # 임시 18:40 -> 22:37
+              "37 13 * * *": (0, 0),     # 22:37 -> 24:00
+          }
 
-              next_times = {
-                  # 06:07 실행 -> 11:37 직전까지
-                  "7 21 * * *": (11, 37),
-
-                  # 11:37 실행 -> 17:07 직전까지
-                  "37 2 * * *": (17, 7),
-
-                  # 17:07 실행 -> 22:37 직전까지
-                  "7 8 * * *": (22, 37),
-
-                  # 22:37 실행 -> 자정 직전까지
-                  "37 13 * * *": (0, 0),
-
-                  # --------------------------------------------------
-                  # 자동실행 테스트용 18:20
-                  # 테스트 실행은 10분만
-                  # --------------------------------------------------
-                  "20 9 * * *": None,
-              }
-
-              # 테스트용 18:20 자동 실행
-              if schedule == "20 9 * * *":
-                  seconds = 600
-
-              else:
-                  hour, minute = next_times[schedule]
-
-                  target = now.replace(
-                      hour=hour,
-                      minute=minute,
-                      second=0,
-                      microsecond=0,
+          def seconds_until(hour, minute, next_day=False):
+              if next_day:
+                  target = (now + timedelta(days=1)).replace(
+                      hour=hour, minute=minute, second=0, microsecond=0
                   )
-
+              else:
+                  target = now.replace(
+                      hour=hour, minute=minute, second=0, microsecond=0
+                  )
                   if target <= now:
                       target += timedelta(days=1)
+              return max(60, int((target - now).total_seconds()) - 60)
 
-                  # 다음 자동 실행 또는 자정 1분 전에 종료
-                  seconds = max(
-                      60,
-                      int((target - now).total_seconds()) - 60,
-                  )
+          if event_name == "schedule":
+              if schedule not in next_times:
+                  print("seconds=600")
+                  raise SystemExit
 
-          print(f"RUN_SECONDS={seconds}")
+              hour, minute = next_times[schedule]
+              if hour == 0 and minute == 0:
+                  print(f"seconds={seconds_until(0, 0, next_day=True)}")
+              else:
+                  print(f"seconds={seconds_until(hour, minute)}")
+              raise SystemExit
 
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"seconds={seconds}\n")
+          # 일반 수동 실행:
+          # 현재 시각부터 다음 정규 자동실행 직전까지 계속 감시
+          h, m = now.hour, now.minute
+
+          if (h, m) < (6, 7):
+              target = now.replace(hour=6, minute=7, second=0, microsecond=0)
+          elif (h, m) < (11, 37):
+              target = now.replace(hour=11, minute=37, second=0, microsecond=0)
+          elif (h, m) < (17, 7):
+              target = now.replace(hour=17, minute=7, second=0, microsecond=0)
+          elif (h, m) < (22, 37):
+              target = now.replace(hour=22, minute=37, second=0, microsecond=0)
+          else:
+              target = (now + timedelta(days=1)).replace(
+                  hour=0, minute=0, second=0, microsecond=0
+              )
+
+          seconds = max(60, int((target - now).total_seconds()) - 60)
+          print(f"seconds={seconds}")
           PY
 
-      - name: Run Lotte World Tower monitor
+      - name: Run
         env:
           RUN_SECONDS: ${{ steps.duration.outputs.seconds }}
-
-          # 기존 GitHub Secrets
           DISCORD_LOTTE_WORLDTOWER: ${{ secrets.LW_WEBHOOK }}
           DISCORD_MENTION_ID: ${{ secrets.DISCORD_MENTION_ID }}
-
-          # 수동 실행에서 체크했을 때만
-          # 현재 실제 GV 1개로 Discord 4종 알림 테스트
           LOTTE_EXISTING_GV_TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.existing_gv_test && '1' || '0' }}
-
         run: |
           python -u lotte_worldtower_rate_test.py
 
@@ -156,7 +144,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No state changes"
           else
-            git commit -m "Update Lotte World Tower alarm state"
+            git commit -m "Update Lotte World Tower state"
             git pull --rebase
             git push
           fi
