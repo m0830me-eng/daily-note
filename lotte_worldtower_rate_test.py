@@ -129,7 +129,9 @@ def main():
                 print("WORLD TOWER FOUND:", cinema_found, cinema_name)
                 print("MOVIE CODE COUNT:", movie_count)
 
-                if is_ok is True and cinema_found:
+                ok_flag = (is_ok is True) or (str(is_ok).strip().lower() == "true")
+
+                if ok_flag and cinema_found:
                     ok_count += 1
                 else:
                     fail_count += 1
