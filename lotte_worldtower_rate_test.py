@@ -58,6 +58,10 @@ RUN_SECONDS = int(os.getenv("RUN_SECONDS", "19200"))
 STATUS_LOG_SECONDS = int(os.getenv("STATUS_LOG_SECONDS", "600"))
 VERBOSE_API_LOGS = os.getenv("VERBOSE_API_LOGS", "0").strip() == "1"
 
+# 현재 연속 감시는 그대로 유지하고, KST 매시 00/05/10/.../55분에
+# 50일 전체를 한 번 더 독립적으로 확인하는 안전 점검을 추가한다.
+FIXED_SAFETY_SCAN_MINUTES = 5
+
 # 같은 1석의 짧은 매진 <-> 예매가능 흔들림 반복 알림 방지
 CANCEL_REARM_SECONDS = 120
 
@@ -1754,6 +1758,7 @@ def main():
     log(f"목표 감시 주기: {SCAN_INTERVAL:.0f}초 (50일 전체 순차 조회)")
     log(f"RUN SECONDS: {RUN_SECONDS}")
     log(f"상태 로그: 첫 50일 스캔 완료 즉시 + 이후 {STATUS_LOG_SECONDS // 60}분마다 요약")
+    log("5분 고정 전체점검: KST 매시 00/05/10/.../55분에 50일 전체 추가 확인")
     log("정상 날짜별 API 로그: 생략 (오류/새 신호/상태 변화는 즉시 표시)")
     log("=" * 60)
 
@@ -1786,6 +1791,13 @@ def main():
     heartbeat_errors = 0
     heartbeat_alerts = 0
     latest_events = {}
+
+    # 실행 직후 같은 5분 구간을 중복 점검하지 않고, 다음 5분 경계부터 시작한다.
+    fixed_now = now_kst()
+    last_fixed_scan_slot = (
+        fixed_now.strftime("%Y%m%d%H"),
+        fixed_now.minute // FIXED_SAFETY_SCAN_MINUTES,
+    )
 
     while time.time() - started < RUN_SECONDS:
         cycle += 1
@@ -1847,6 +1859,72 @@ def main():
                 heartbeat_cycles = 0
                 heartbeat_errors = 0
                 heartbeat_alerts = 0
+
+            # --------------------------------------------------------
+            # KST 매시 00/05/10/.../55분 고정 50일 안전 점검
+            # - 기존 연속 감시는 그대로 둔다.
+            # - 5분 경계가 바뀐 뒤 최초 한 번만 별도 전체 스캔한다.
+            # - 여기서 발견한 이벤트/상태 변화도 평소와 동일하게 처리한다.
+            # --------------------------------------------------------
+            fixed_now = now_kst()
+            fixed_scan_slot = (
+                fixed_now.strftime("%Y%m%d%H"),
+                fixed_now.minute // FIXED_SAFETY_SCAN_MINUTES,
+            )
+
+            if fixed_scan_slot != last_fixed_scan_slot:
+                last_fixed_scan_slot = fixed_scan_slot
+                fixed_started = time.time()
+
+                try:
+                    fixed_events, fixed_mode, fixed_errors = scan_all_50_days()
+                    latest_events = fixed_events
+
+                    if fixed_errors:
+                        log(
+                            f"⚠️ {fixed_now.strftime('%H:%M')} 5분 고정 전체점검 오류 | "
+                            f"{fixed_errors}일 / MODE={fixed_mode}"
+                        )
+
+                    log_new_event_diagnostics(
+                        fixed_events,
+                        state,
+                    )
+
+                    fixed_sent, fixed_unknown = process(
+                        fixed_events,
+                        state,
+                    )
+                    save_state(state)
+
+                    fixed_elapsed = time.time() - fixed_started
+                    fixed_counts = counts(fixed_events)
+
+                    heartbeat_errors += fixed_errors
+                    heartbeat_alerts += fixed_sent
+
+                    if fixed_errors:
+                        fixed_icon = "⚠️"
+                    else:
+                        fixed_icon = "🔎"
+
+                    log(
+                        f"{fixed_icon} {fixed_now.strftime('%H:%M')} "
+                        f"5분 고정 전체점검 완료 | 50일 | "
+                        f"GV {fixed_counts['GV']} | 무대인사 {fixed_counts['STAGE']} | "
+                        f"상영준비중 {fixed_counts['PREPARING']} | "
+                        f"예매가능 {fixed_counts['OPEN']} | 매진 {fixed_counts['SOLD_OUT']} | "
+                        f"오류 {fixed_errors} | 알림 {fixed_sent} | "
+                        f"{fixed_elapsed:.1f}초"
+                    )
+
+                except Exception as fixed_error:
+                    heartbeat_errors += 1
+                    log(
+                        f"⚠️ {fixed_now.strftime('%H:%M')} "
+                        f"5분 고정 전체점검 실패 | "
+                        f"{type(fixed_error).__name__}: {fixed_error}"
+                    )
 
         except Exception as error:
             heartbeat_errors += 1
