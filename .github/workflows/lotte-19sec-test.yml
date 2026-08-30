@@ -1,16 +1,38 @@
-name: Lotte World Tower Auto Speed Test
+name: Lotte World Tower Monitor
 
 on:
   workflow_dispatch:
 
+  schedule:
+    # 한국시간 06:07
+    - cron: "7 21 * * *"
+
+    # 한국시간 11:37
+    - cron: "37 2 * * *"
+
+    # 한국시간 17:07
+    - cron: "7 8 * * *"
+
+    # 한국시간 22:37
+    - cron: "37 13 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lotte-worldtower-monitor
+  cancel-in-progress: false
+
 jobs:
-  test:
+  monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 345
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -18,10 +40,82 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
 
-      - name: Run Lotte auto speed test with live source logs
+      - name: Set monitoring duration
+        id: duration
+        shell: bash
         env:
-          RUN_SECONDS: "3600"
+          EVENT_NAME: ${{ github.event_name }}
+          CRON_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+
+          event_name = os.environ.get("EVENT_NAME", "")
+          schedule = os.environ.get("CRON_SCHEDULE", "")
+
+          # 수동 실행은 10분 테스트
+          if event_name == "workflow_dispatch":
+              seconds = 600
+
+          else:
+              kst = ZoneInfo("Asia/Seoul")
+              now = datetime.now(kst)
+
+              next_times = {
+                  "7 21 * * *": (11, 37),   # 06:07 → 11:37
+                  "37 2 * * *": (17, 7),    # 11:37 → 17:07
+                  "7 8 * * *": (22, 37),    # 17:07 → 22:37
+                  "37 13 * * *": (0, 0),    # 22:37 → 자정
+              }
+
+              hour, minute = next_times[schedule]
+
+              target = now.replace(
+                  hour=hour,
+                  minute=minute,
+                  second=0,
+                  microsecond=0
+              )
+
+              if target <= now:
+                  target += timedelta(days=1)
+
+              # 다음 실행/자정 1분 전에 종료
+              seconds = max(
+                  60,
+                  int((target - now).total_seconds()) - 60
+              )
+
+          print(f"RUN_SECONDS={seconds}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"seconds={seconds}\n")
+          PY
+
+      - name: Run Lotte World Tower monitor
+        env:
+          RUN_SECONDS: ${{ steps.duration.outputs.seconds }}
           DISCORD_LOTTE_WORLDTOWER: ${{ secrets.DISCORD_LOTTE_WORLDTOWER }}
-        run: python -u lotte_worldtower_rate_test.py
+        run: |
+          python -u lotte_worldtower_rate_test.py
+
+      - name: Save state
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add seen_lotte_worldtower.json baseline_lotte_worldtower.done 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "No state changes"
+          else
+            git commit -m "Update Lotte World Tower alarm state"
+            git pull --rebase
+            git push
+          fi
