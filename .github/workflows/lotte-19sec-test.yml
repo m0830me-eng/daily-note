@@ -1,4 +1,4 @@
-name: Lotte World Tower 19s Test
+name: Lotte World Tower Auto Speed Test
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 70
 
     steps:
       - name: Checkout
@@ -20,8 +20,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run 19-second test
+      - name: Run Lotte auto speed test with live source logs
         env:
-          TARGET_INTERVAL: "19"
-          RUN_SECONDS: "300"
+          RUN_SECONDS: "3600"
+          DISCORD_LOTTE_WORLDTOWER: ${{ secrets.DISCORD_LOTTE_WORLDTOWER }}
         run: python -u lotte_worldtower_rate_test.py
