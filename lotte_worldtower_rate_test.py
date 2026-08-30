@@ -62,6 +62,7 @@ DISCORD_MENTION_ID = "1383846907847381184"
 
 STATE_FILE = Path("seen_lotte_worldtower.json")
 BASELINE_FILE = Path("baseline_lotte_worldtower.done")
+BASELINE_SCHEMA = "LOTTE_CINEMA_GV_STAGE_V2"
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -934,12 +935,12 @@ def event_name(show):
 
 
 def discord_post(content):
-    if not DISCORD_WEBHOOK.startswith(
-        "https://discord.com/api/webhooks/"
-    ):
+    # 예전에 정상 사용하던 GitHub Secret 값을 그대로 허용한다.
+    # discord.com / discordapp.com / canary.discord.com 등 도메인 형태를
+    # 코드에서 임의로 제한하지 않고, 실제 Discord 응답으로 유효성을 확인한다.
+    if not DISCORD_WEBHOOK:
         raise RuntimeError(
-            "DISCORD_LOTTE_WORLDTOWER "
-            "Secret이 올바르지 않습니다."
+            "DISCORD_LOTTE_WORLDTOWER Secret이 비어 있습니다."
         )
 
     payload = {
@@ -1411,6 +1412,15 @@ def log_new_event_diagnostics(events, state):
 # Baseline
 # ============================================================
 
+def baseline_schema_ok():
+    if not BASELINE_FILE.exists():
+        return False
+    try:
+        return BASELINE_FILE.read_text(encoding="utf-8").strip() == BASELINE_SCHEMA
+    except Exception:
+        return False
+
+
 def make_baseline(events):
     state = {
         key: record(
@@ -1428,9 +1438,7 @@ def make_baseline(events):
     )
 
     BASELINE_FILE.write_text(
-        now_kst().isoformat(
-            timespec="seconds"
-        ),
+        BASELINE_SCHEMA,
         encoding="utf-8",
     )
 
@@ -1760,8 +1768,12 @@ def main():
 
     state = load_state()
 
-    # 최초 정상 실행은 50일 전체 baseline.
-    if not BASELINE_FILE.exists():
+    # 최초 실행 또는 감지키/분류방식이 바뀐 버전은 50일 전체를
+    # 다시 기준값으로 등록한다. 이 재기준화 실행에서는 Discord 알림을 보내지 않는다.
+    # 예전 state의 키와 새 코드의 키가 달라 기존 회차가 '신규'로 오인되는 것을 방지한다.
+    if not baseline_schema_ok():
+        log("")
+        log("기준값 버전이 없거나 이전 버전입니다. 현재 50일 회차를 알림 없이 다시 기준값으로 등록합니다.")
         events, mode, errors = scan_all_50_days()
         log(f"FETCH MODE: {mode}")
         log(f"SCAN ERRORS: {errors}")
