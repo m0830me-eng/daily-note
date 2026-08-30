@@ -30,7 +30,7 @@ import requests
 # 따라서:
 # 1) API 응답에 "상영준비중/예매준비중" 문구가 직접 있으면 상영준비중으로 처리
 # 2) Y/E/N 이외의 새 상태는 GitHub Actions 진단 로그에만 기록
-# 3) 화면 표시보다 API에 GV/무대인사 신호가 먼저 생기면 선행 진단 로그 기록
+# 3) 화면 표시보다 API에 GV/무대인사 신호가 먼저 생기면 선행 감지 Discord 알림 전송
 #
 # 감시 범위
 # ------------------------------------------------------------
@@ -983,70 +983,44 @@ def show_when(show):
     return start
 
 
-def send_alert(
-    show,
-    status,
-):
-    if status == "PREPARING":
-        title = (
-            f"⏳ {SITE_NAME} "
-            f"{event_name(show)} 상영준비중"
-        )
+def format_event_alert(show, status):
+    """Discord 실제 알림 형식.
 
-        action = (
-            "예매가 열리는지 계속 확인합니다."
-        )
+    4종 상태를 서로 다른 첫 줄로 구분하되,
+    회차 본문은 항상 같은 3줄 형식을 사용한다.
+    """
+    kind = event_name(show)
+    url = booking_url(show)
 
+    start_time = norm(show.get("time")) or "시간 확인 필요"
+    end_time = norm(show.get("end_time"))
+    when = f"{start_time}–{end_time}" if end_time else start_time
+
+    movie = show.get("movie") or "영화명 확인 필요"
+    screen = show.get("screen") or "상영관 정보 없음"
+
+    if status == "DETECTED":
+        status_line = f"🔎 {kind}가 감지됐습니다"
+    elif status == "PREPARING":
+        status_line = "⏳ 상영준비중"
     elif status == "CANCEL_TICKET":
-        title = (
-            f"🎟️ {SITE_NAME} "
-            f"{event_name(show)} 취소표가 생겼습니다"
-        )
-
-        action = (
-            "취소표가 열렸습니다. 지금 바로 예매 확인해."
-        )
-
+        status_line = "🎟️ 취소표가 생겼습니다"
     else:
-        title = (
-            f"🚨 {SITE_NAME} "
-            f"{event_name(show)} 예매 오픈!"
-        )
+        status_line = "🎟️ 예매가 열렸습니다"
 
-        action = (
-            "지금 바로 예매 확인해."
-        )
+    lines = [
+        f"<@{DISCORD_MENTION_ID}>",
+        status_line,
+        f"[🎬 {SITE_NAME} · {kind}]({url})",
+        f"📅 {show.get('date')}",
+        f"🎟 {when} · {movie} · {screen}",
+    ]
 
-    seat = ""
+    return "\n".join(lines)
 
-    if show.get("remain"):
-        seat = (
-            f"\n💺 잔여 "
-            f"{show['remain']}"
-        )
 
-        if show.get("total"):
-            seat += (
-                f" / {show['total']}"
-            )
-
-    content = (
-        f"<@{DISCORD_MENTION_ID}>\n"
-        f"**{title}**\n"
-        f"🎬 "
-        f"{show.get('movie') or '영화명 확인 필요'}\n"
-        f"📅 {show.get('date')}   "
-        f"⏰ {show_when(show)}\n"
-        f"🎞️ "
-        f"{show.get('screen') or '상영관 정보 없음'}"
-        f"{seat}\n"
-        f"{action}\n"
-        f"🎟️ {booking_url(show)}"
-    )
-
-    discord_post(
-        content
-    )
+def send_alert(show, status):
+    discord_post(format_event_alert(show, status))
 
 
 def diagnostic_fields(show):
@@ -1158,38 +1132,64 @@ def send_unknown_status(show):
 
 
 def send_test():
-    discord_post(
-        f"<@{DISCORD_MENTION_ID}>\n"
-        f"**⏳ {SITE_NAME} "
-        f"무대인사 상영준비중 테스트**\n"
-        f"상영준비중 알림 전송 정상.\n"
-        f"※ 실제 회차가 아닌 테스트입니다."
+    # 예전 가짜 테스트 메시지는 사용하지 않는다.
+    # 현재 실제 GV 1개로 4종 실제 알림 형식을 그대로 테스트한다.
+    send_existing_gv_test()
+
+
+def send_existing_gv_test():
+    """현재 50일 안의 실제 GV 1개로 Discord 4종 알림을 테스트한다.
+
+    Discord에는 '테스트' 문구를 넣지 않는다.
+    state/baseline 파일은 읽거나 수정하지 않는다.
+    """
+    log("")
+    log("CURRENT GV DISCORD TEST: 실제 GV 1개를 조회합니다.")
+
+    events, mode, errors = scan_all_50_days()
+    log(f"FETCH MODE: {mode}")
+    log(f"SCAN ERRORS: {errors}")
+
+    gvs = [
+        show
+        for show in events.values()
+        if show.get("event_type") == "GV"
+    ]
+
+    if not gvs:
+        log("CURRENT GV DISCORD TEST: 현재 감지된 GV가 없습니다.")
+        return
+
+    gvs.sort(
+        key=lambda show: (
+            0 if show.get("booking_state") == "OPEN" else 1,
+            show.get("date", ""),
+            show.get("time", ""),
+            show.get("movie", ""),
+        )
     )
 
-    time.sleep(1)
+    show = gvs[0]
 
-    discord_post(
-        f"<@{DISCORD_MENTION_ID}>\n"
-        f"**🚨 {SITE_NAME} "
-        f"무대인사 예매 오픈 테스트**\n"
-        f"예매 오픈 알림 전송 정상.\n"
-        f"※ 실제 회차가 아닌 테스트입니다."
+    # Discord에는 아래 4개가 각각 실제 운영 형식 그대로 전송된다.
+    test_statuses = (
+        "DETECTED",
+        "PREPARING",
+        "OPEN",
+        "CANCEL_TICKET",
     )
 
-    time.sleep(1)
-
-    discord_post(
-        f"<@{DISCORD_MENTION_ID}>\n"
-        f"**🎟️ {SITE_NAME} "
-        f"무대인사 취소표가 생겼습니다 테스트**\n"
-        f"취소표 알림 전송 정상.\n"
-        f"※ 실제 회차가 아닌 테스트입니다."
-    )
+    for status in test_statuses:
+        send_alert(show, status)
+        time.sleep(0.7)
 
     log(
-        "DISCORD TEST COMPLETE: "
-        "상영준비중 + 예매 오픈 + 취소표"
+        "CURRENT GV DISCORD TEST SENT: "
+        "선행 감지 + 상영준비중 + 예매 오픈 + 취소표 / "
+        f"{show.get('date')} / {show.get('movie')} / "
+        f"{show.get('time')} / {show.get('screen')}"
     )
+    log("STATE/BASELINE: 변경하지 않았습니다.")
 
 
 # ============================================================
@@ -1345,7 +1345,7 @@ def print_all_events(events):
 
 
 # ============================================================
-# API 선행 진단 로그 (Discord 전송 안 함)
+# API 선행 감지 (Discord 전송)
 # ============================================================
 
 def state_name_korean(status):
@@ -1359,12 +1359,15 @@ def state_name_korean(status):
 
 
 def log_new_event_diagnostics(events, state):
-    """
-    화면 표시 여부와 무관하게 롯데 API에 GV/무대인사 신호가 먼저 생기면
-    GitHub Actions 로그에 최초 1회 표시한다.
-    Discord 알림은 여기서 보내지 않는다.
+    """API에 GV/무대인사 신호가 처음 생긴 순간을 Discord에 알린다.
+
+    - 기존 state에 없는 회차만 최초 1회 대상
+    - Discord 전송에 성공하면 임시 DETECTED 상태를 state에 남긴다.
+      뒤의 예매오픈/상영준비중 전송이 실패해도 선행 감지가 반복되지 않는다.
+    - 실제 booking 상태는 같은 사이클의 process()가 곧바로 덮어쓴다.
     """
     detected = 0
+    discord_sent = 0
 
     ordered = sorted(
         events.items(),
@@ -1377,7 +1380,6 @@ def log_new_event_diagnostics(events, state):
     )
 
     for key, show in ordered:
-        # 이미 state에 있으면 이전 사이클/기준값에서 본 회차이므로 반복 출력 안 함.
         if key in state:
             continue
 
@@ -1390,7 +1392,7 @@ def log_new_event_diagnostics(events, state):
         ) or "-"
 
         log("")
-        log("🔎 API 선행 진단")
+        log("🔎 API 선행 감지")
         log(f"{kind}가 감지됐습니다")
         log(
             f"{show.get('date')} / "
@@ -1405,7 +1407,22 @@ def log_new_event_diagnostics(events, state):
         )
         detected += 1
 
-    return detected
+        try:
+            send_alert(show, "DETECTED")
+        except Exception as error:
+            log(
+                f"DISCORD ERROR (선행 감지): {kind} / "
+                f"{show.get('movie')} / {show.get('date')} "
+                f"{show.get('time')} / {error}"
+            )
+            continue
+
+        # 임시 상태. process()가 현재 실제 상태로 교체한다.
+        state[key] = record(show, "DETECTED")
+        save_state(state)
+        discord_sent += 1
+
+    return detected, discord_sent
 
 
 # ============================================================
@@ -1599,6 +1616,7 @@ def process(
         if current == "PREPARING":
             if previous in (
                 None,
+                "DETECTED",
                 "UNKNOWN",
                 "CLOSED",
                 "SOLD_OUT",
@@ -1618,6 +1636,7 @@ def process(
         elif current == "OPEN":
             if previous in (
                 None,
+                "DETECTED",
                 "UNKNOWN",
                 "PREPARING",
                 "CLOSED",
@@ -1705,10 +1724,10 @@ def process(
                 transition = "취소표가 생겼습니다"
                 icon = "🎟️"
             elif previous == "PREPARING":
-                transition = "상영준비중 -> 예매 오픈"
+                transition = "상영준비중 -> 예매가 열렸습니다"
                 icon = "🚨"
             else:
-                transition = "예매 오픈"
+                transition = "예매가 열렸습니다"
                 icon = "🚨"
 
             log(
@@ -1745,14 +1764,23 @@ def main():
     log("이벤트 코드: AccompanyTypeCode 30=무대인사, 40=GV")
     log("예매 상태: Y=예매 가능 / E=매진 / N=예매 불가·마감")
     log("상영준비중: API의 상영준비중/예매준비중 문구를 감지")
-    log("선행 진단: API에서 GV/무대인사 신호가 처음 보이면 Actions 로그에 표시")
+    log("선행 감지: API에서 GV/무대인사 신호가 처음 보이면 Discord에도 전송")
     log("취소표: 매진 후 재오픈 시 '취소표가 생겼습니다'로 별도 알림")
     log("감시 범위: 오늘 ~ +49일 (50일 전체)")
     log(f"목표 감시 주기: {SCAN_INTERVAL:.0f}초 (50일 전체 순차 조회)")
     log(f"RUN SECONDS: {RUN_SECONDS}")
     log("=" * 60)
 
-    # 강제 Discord 테스트. baseline/state는 건드리지 않음.
+    # 현재 실제 GV 1개를 Discord로 보내는 수동 테스트.
+    # baseline/state는 읽거나 수정하지 않는다.
+    if os.getenv(
+        "LOTTE_EXISTING_GV_TEST",
+        "",
+    ).strip().lower() in {"1", "true", "yes", "on"}:
+        send_existing_gv_test()
+        return
+
+    # 기존 강제 Discord 테스트. baseline/state는 건드리지 않음.
     if (
         os.getenv(
             "LOTTE_ALERT_TEST",
@@ -1801,7 +1829,7 @@ def main():
             print_counts(cycle_events)
 
             # process 전에 실행해야 state에 아직 없는 '최초 API 신호'를 잡을 수 있다.
-            early_detected = log_new_event_diagnostics(
+            early_detected, early_discord_sent = log_new_event_diagnostics(
                 cycle_events,
                 state,
             )
@@ -1819,7 +1847,8 @@ def main():
             )
             log(
                 f"이번 사이클 Discord 알림: "
-                f"{sent}건"
+                f"{early_discord_sent + sent}건 "
+                f"(선행 감지 {early_discord_sent} + 상태 알림 {sent})"
             )
             log(
                 f"이번 사이클 미확인 상태 진단 로그: "
