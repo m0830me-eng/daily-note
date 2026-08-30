@@ -6,6 +6,8 @@ import json
 import os
 import re
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -58,9 +60,13 @@ RUN_SECONDS = int(os.getenv("RUN_SECONDS", "19200"))
 STATUS_LOG_SECONDS = int(os.getenv("STATUS_LOG_SECONDS", "600"))
 VERBOSE_API_LOGS = os.getenv("VERBOSE_API_LOGS", "0").strip() == "1"
 
-# 현재 연속 감시는 그대로 유지하고, KST 매시 00/05/10/.../55분에
-# 50일 전체를 한 번 더 독립적으로 확인하는 안전 점검을 추가한다.
+# 현재 연속 50일 감시는 그대로 유지한다.
+# KST 매시 00/05/10/.../55분에는 +4일~+21일(18일)을
+# 18개 worker로 동시에 확인하는 실험용 고정 점검을 추가한다.
 FIXED_SAFETY_SCAN_MINUTES = 5
+FIXED_CONCURRENT_START_OFFSET = 4
+FIXED_CONCURRENT_DAYS = 18
+FIXED_CONCURRENT_WORKERS = 18
 
 # 같은 1석의 짧은 매진 <-> 예매가능 흔들림 반복 알림 방지
 CANCEL_REARM_SECONDS = 120
@@ -83,13 +89,22 @@ UA = (
     "Chrome/151.0.0.0 Safari/537.36"
 )
 
-SESSION = requests.Session()
-SESSION.headers.update({
+SESSION_HEADERS = {
     "User-Agent": UA,
     "Accept": "application/json, text/plain, */*",
     "Referer": "https://www.lottecinema.co.kr/NLCHS/Ticketing",
     "Origin": "https://www.lottecinema.co.kr",
-})
+}
+
+_THREAD_LOCAL = threading.local()
+
+def get_session():
+    session = getattr(_THREAD_LOCAL, "session", None)
+    if session is None:
+        session = requests.Session()
+        session.headers.update(SESSION_HEADERS)
+        _THREAD_LOCAL.session = session
+    return session
 
 
 # ============================================================
@@ -132,7 +147,7 @@ def lotte_post(payload):
         )
     }
 
-    response = SESSION.post(
+    response = get_session().post(
         LOTTE_API,
         files=files,
         timeout=15,
@@ -808,6 +823,62 @@ def scan_dates(dates, label):
 def scan_all_50_days():
     dates = make_dates(0, TOTAL_DAYS)
     return scan_dates(dates, "FULL 50-DAY")
+
+
+def scan_fixed_18_days_concurrent():
+    """
+    매 5분 고정 안전점검용.
+    +4일~+21일 18개 날짜를 18 worker로 동시에 시작한다.
+    각 worker는 독립 requests.Session을 사용한다.
+
+    주의: fetch_date_primary()의 기존 미래 날짜 보강(enrich) 로직도 그대로 유지된다.
+    따라서 실제 요청 수는 날짜당 1회보다 늘어날 수 있다.
+    이번 버전은 롯데 서버가 이 동시성을 버티는지 확인하는 테스트 버전이다.
+    """
+    dates = make_dates(
+        FIXED_CONCURRENT_START_OFFSET,
+        FIXED_CONCURRENT_DAYS,
+    )
+
+    rows_by_date = {}
+    errors = 0
+    error_examples = []
+
+    with ThreadPoolExecutor(
+        max_workers=FIXED_CONCURRENT_WORKERS
+    ) as executor:
+        future_map = {
+            executor.submit(fetch_date_primary, date): date
+            for date in dates
+        }
+
+        for future in as_completed(future_map):
+            date = future_map[future]
+            try:
+                rows_by_date[date] = future.result()
+            except Exception as error:
+                errors += 1
+                if len(error_examples) < 3:
+                    error_examples.append(
+                        f"{date}: {type(error).__name__}: {error}"
+                    )
+
+    all_rows = []
+    for date in dates:
+        all_rows.extend(rows_by_date.get(date, []))
+
+    events = {}
+    for show in dedupe(all_rows):
+        if show.get("event_type") in {"GV", "STAGE"}:
+            events[show_key(show)] = show
+
+    if error_examples:
+        log(
+            "⚠️ 18일 동시점검 오류 예시: "
+            + " | ".join(error_examples)
+        )
+
+    return events, "CONCURRENT_18DAY", errors
 
 
 # ============================================================
@@ -1758,7 +1829,7 @@ def main():
     log(f"목표 감시 주기: {SCAN_INTERVAL:.0f}초 (50일 전체 순차 조회)")
     log(f"RUN SECONDS: {RUN_SECONDS}")
     log(f"상태 로그: 첫 50일 스캔 완료 즉시 + 이후 {STATUS_LOG_SECONDS // 60}분마다 요약")
-    log("5분 고정 전체점검: KST 매시 00/05/10/.../55분에 50일 전체 추가 확인")
+    log("5분 고정 동시점검: KST 매시 00/05/10/.../55분에 +4~+21일 18일을 18개 worker로 동시 확인")
     log("정상 날짜별 API 로그: 생략 (오류/새 신호/상태 변화는 즉시 표시)")
     log("=" * 60)
 
@@ -1861,9 +1932,9 @@ def main():
                 heartbeat_alerts = 0
 
             # --------------------------------------------------------
-            # KST 매시 00/05/10/.../55분 고정 50일 안전 점검
+            # KST 매시 00/05/10/.../55분 고정 +4~+21일 18일 동시 점검
             # - 기존 연속 감시는 그대로 둔다.
-            # - 5분 경계가 바뀐 뒤 최초 한 번만 별도 전체 스캔한다.
+            # - 5분 경계가 바뀐 뒤 최초 한 번만 18일 동시 스캔한다.
             # - 여기서 발견한 이벤트/상태 변화도 평소와 동일하게 처리한다.
             # --------------------------------------------------------
             fixed_now = now_kst()
@@ -1877,12 +1948,12 @@ def main():
                 fixed_started = time.time()
 
                 try:
-                    fixed_events, fixed_mode, fixed_errors = scan_all_50_days()
+                    fixed_events, fixed_mode, fixed_errors = scan_fixed_18_days_concurrent()
                     latest_events = fixed_events
 
                     if fixed_errors:
                         log(
-                            f"⚠️ {fixed_now.strftime('%H:%M')} 5분 고정 전체점검 오류 | "
+                            f"⚠️ {fixed_now.strftime('%H:%M')} 5분 고정 18일 동시점검 오류 | "
                             f"{fixed_errors}일 / MODE={fixed_mode}"
                         )
 
@@ -1910,7 +1981,7 @@ def main():
 
                     log(
                         f"{fixed_icon} {fixed_now.strftime('%H:%M')} "
-                        f"5분 고정 전체점검 완료 | 50일 | "
+                        f"5분 고정 18일 동시점검 완료 | +4~+21일 | "
                         f"GV {fixed_counts['GV']} | 무대인사 {fixed_counts['STAGE']} | "
                         f"상영준비중 {fixed_counts['PREPARING']} | "
                         f"예매가능 {fixed_counts['OPEN']} | 매진 {fixed_counts['SOLD_OUT']} | "
@@ -1922,7 +1993,7 @@ def main():
                     heartbeat_errors += 1
                     log(
                         f"⚠️ {fixed_now.strftime('%H:%M')} "
-                        f"5분 고정 전체점검 실패 | "
+                        f"5분 고정 18일 동시점검 실패 | "
                         f"{type(fixed_error).__name__}: {fixed_error}"
                     )
 
