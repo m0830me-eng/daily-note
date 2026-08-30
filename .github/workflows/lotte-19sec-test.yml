@@ -3,11 +3,11 @@ name: Lotte World Tower Monitor
 on:
   workflow_dispatch:
     inputs:
-      test_existing_gv:
-        description: "현재 실제 GV 1개를 Discord로 테스트 전송"
+      existing_gv_test:
+        description: "현재 실제 GV 1개로 Discord 4종 알림 테스트"
         required: false
-        default: false
         type: boolean
+        default: false
 
   schedule:
     # 한국시간 06:07
@@ -64,7 +64,7 @@ jobs:
           event_name = os.environ.get("EVENT_NAME", "")
           schedule = os.environ.get("CRON_SCHEDULE", "")
 
-          # 수동 실행은 10분 테스트
+          # 수동 실행은 10분
           if event_name == "workflow_dispatch":
               seconds = 600
 
@@ -91,7 +91,7 @@ jobs:
               if target <= now:
                   target += timedelta(days=1)
 
-              # 다음 실행/자정 1분 전에 종료
+              # 다음 실행 또는 자정 1분 전에 종료
               seconds = max(
                   60,
                   int((target - now).total_seconds()) - 60,
@@ -106,8 +106,14 @@ jobs:
       - name: Run Lotte World Tower monitor
         env:
           RUN_SECONDS: ${{ steps.duration.outputs.seconds }}
-          DISCORD_LOTTE_WORLDTOWER: ${{ secrets.DISCORD_LOTTE_WORLDTOWER }}
-          LOTTE_EXISTING_GV_TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.test_existing_gv && 'true' || 'false' }}
+
+          # 기존에 만들어둔 GitHub Secrets 사용
+          DISCORD_LOTTE_WORLDTOWER: ${{ secrets.LW_WEBHOOK }}
+          DISCORD_MENTION_ID: ${{ secrets.DISCORD_MENTION_ID }}
+
+          # 수동 실행에서 체크했을 때만 현재 GV로 4종 Discord 테스트
+          LOTTE_EXISTING_GV_TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.existing_gv_test && '1' || '0' }}
+
         run: |
           python -u lotte_worldtower_rate_test.py
 
