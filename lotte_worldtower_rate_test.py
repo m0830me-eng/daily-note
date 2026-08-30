@@ -1071,6 +1071,39 @@ def send_alert(
     show,
     status,
 ):
+    # 취소표 알림은 별도 간결 형식
+    if status == "CANCEL_TICKET":
+        start = show.get("time", "")
+        end = show.get("end_time", "")
+        time_text = (
+            f"{start}–{end}"
+            if end
+            else start
+        )
+
+        movie = (
+            show.get("movie")
+            or "영화명 확인 필요"
+        )
+        screen = (
+            show.get("screen")
+            or "상영관 정보 없음"
+        )
+        link = booking_url(show)
+
+        content = (
+            f"<@{DISCORD_MENTION_ID}>\n"
+            f"**🎟️ 취소표가 생겼습니다**\n"
+            f"**🎬 {SITE_NAME} · {event_name(show)}**\n"
+            f"**📅 {show.get('date')}**\n"
+            f"**[🎟 {time_text} · {movie} · {screen}]({link})**"
+        )
+
+        discord_post(
+            content
+        )
+        return
+
     if status == "PREPARING":
         title = (
             f"⏳ {SITE_NAME} "
@@ -1079,16 +1112,6 @@ def send_alert(
 
         action = (
             "예매가 열리는지 계속 확인합니다."
-        )
-
-    elif status == "CANCEL_TICKET":
-        title = (
-            f"🎟️ {SITE_NAME} "
-            f"{event_name(show)} 취소표가 생겼습니다"
-        )
-
-        action = (
-            "취소표가 열렸습니다. 지금 바로 예매 확인해."
         )
 
     else:
