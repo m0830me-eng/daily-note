@@ -36,8 +36,8 @@ import requests
 #
 # 감시 범위
 # ------------------------------------------------------------
-# 오늘~49일 뒤: 43일 전체를 10초 목표로 순차 조회
-# 실제 43일 조회 시간이 10초를 넘으면 조회 완료 즉시 다음 사이클 시작
+# 오늘~49일 뒤: 50일 전체를 10초 목표로 순차 조회
+# 실제 50일 조회 시간이 10초를 넘으면 조회 완료 즉시 다음 사이클 시작
 # ============================================================
 
 
@@ -47,23 +47,14 @@ SITE_NAME = "롯데시네마 월드타워"
 CINEMA_ID = "1|0001|1016"
 CINEMA_CODE = "1016"
 
-TOTAL_DAYS = 43
-
-# CGV와 같은 날짜별 분산 감시
-INTERVAL_TODAY = 300.0       # 오늘: 5분
-INTERVAL_TOMORROW = 20.0     # 내일(+1): 20초
-INTERVAL_2_4 = 90.0          # +2~+4일: 90초
-INTERVAL_5_14 = 30.0         # +5~+14일: 30초
-INTERVAL_15_30 = 60.0        # +15~+30일: 60초
-INTERVAL_31_42 = 300.0       # +31~+42일: 5분
-INTERVAL_PRIORITY = 20.0     # 상영준비중/매진 날짜: 20초
-IDLE_SLEEP = 0.15
+TOTAL_DAYS = 50
+SCAN_INTERVAL = 10.0
 
 RUN_SECONDS = int(os.getenv("RUN_SECONDS", "19200"))
 
 # GitHub Actions 로그 폭증 방지:
 # - 정상 API 날짜별 로그는 숨김
-# - 첫 43일 스캔 완료 시 1회 요약
+# - 첫 50일 스캔 완료 시 1회 요약
 # - 이후 10분마다 정상 동작 요약(환경변수로 변경 가능)
 # - 새 이벤트/상태 변화/API 오류는 즉시 상세 로그
 STATUS_LOG_SECONDS = int(os.getenv("STATUS_LOG_SECONDS", "600"))
@@ -77,8 +68,6 @@ FIXED_CONCURRENT_START_OFFSET = 4
 FIXED_CONCURRENT_DAYS = 18
 FIXED_CONCURRENT_WORKERS = 18
 
-# 같은 1석의 짧은 매진 <-> 예매가능 흔들림 반복 알림 방지
-CANCEL_REARM_SECONDS = 120
 
 DISCORD_WEBHOOK = os.getenv(
     "DISCORD_LOTTE_WORLDTOWER",
@@ -116,6 +105,17 @@ def get_session():
     return session
 
 
+def reset_session():
+    """현재 스레드의 세션만 버리고 다음 요청에서 새 세션을 만든다."""
+    session = getattr(_THREAD_LOCAL, "session", None)
+    if session is not None:
+        try:
+            session.close()
+        except Exception:
+            pass
+    _THREAD_LOCAL.session = None
+
+
 # ============================================================
 # Basic helpers
 # ============================================================
@@ -146,6 +146,16 @@ def bounded_gv(text):
 
 
 def lotte_post(payload):
+    """
+    롯데 서버의 순간적인 연결 종료/빈 응답을 한 번만 자동 복구한다.
+
+    - ConnectionError / Timeout
+    - JSONDecodeError 계열(ValueError)
+    - 일시적인 429/5xx
+
+    첫 실패 때 현재 스레드 세션을 버리고 잠깐 쉰 뒤 1회 재시도.
+    두 번째도 실패하면 기존 코드처럼 예외를 위로 올려 Actions 로그에 남긴다.
+    """
     files = {
         "paramList": (
             None,
@@ -156,14 +166,60 @@ def lotte_post(payload):
         )
     }
 
-    response = get_session().post(
-        LOTTE_API,
-        files=files,
-        timeout=15,
-    )
-    response.raise_for_status()
+    transient_statuses = {
+        429, 500, 502, 503, 504,
+    }
 
-    return response.json(), response
+    last_error = None
+
+    for attempt in range(2):
+        try:
+            response = get_session().post(
+                LOTTE_API,
+                files=files,
+                timeout=15,
+            )
+
+            if response.status_code in transient_statuses:
+                if attempt == 0:
+                    reset_session()
+                    time.sleep(0.8)
+                    continue
+
+            response.raise_for_status()
+
+            try:
+                data = response.json()
+            except ValueError as error:
+                last_error = error
+
+                if attempt == 0:
+                    reset_session()
+                    time.sleep(0.8)
+                    continue
+
+                raise
+
+            return data, response
+
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as error:
+            last_error = error
+
+            if attempt == 0:
+                reset_session()
+                time.sleep(0.8)
+                continue
+
+            raise
+
+    # 정상적으로 여기까지 올 일은 없지만, 혹시 모를 방어.
+    if last_error is not None:
+        raise last_error
+
+    raise RuntimeError("LOTTE API retry failed without an explicit error")
 
 
 def scalar_texts(obj):
@@ -829,82 +885,9 @@ def scan_dates(dates, label):
     return events, mode, errors
 
 
-def scan_all_43_days():
+def scan_all_50_days():
     dates = make_dates(0, TOTAL_DAYS)
-    return scan_dates(dates, "FULL 43-DAY")
-
-
-
-def reset_thread_session():
-    try:
-        _THREAD_LOCAL.session = None
-    except Exception:
-        pass
-
-
-def base_interval_for_offset(offset):
-    if offset == 0:
-        return INTERVAL_TODAY
-    if offset == 1:
-        return INTERVAL_TOMORROW
-    if 2 <= offset <= 4:
-        return INTERVAL_2_4
-    if 5 <= offset <= 14:
-        return INTERVAL_5_14
-    if 15 <= offset <= 30:
-        return INTERVAL_15_30
-    return INTERVAL_31_42
-
-
-def priority_date(date, state):
-    for item in state.values():
-        if not isinstance(item, dict):
-            continue
-        if item.get("date") != date:
-            continue
-        if item.get("status") in {"PREPARING", "SOLD_OUT"}:
-            return True
-    return False
-
-
-def interval_for_date(date, state):
-    today = now_kst().date()
-    target = datetime.strptime(date, "%Y-%m-%d").date()
-    offset = (target - today).days
-
-    base = base_interval_for_offset(offset)
-    if priority_date(date, state):
-        return min(base, INTERVAL_PRIORITY)
-    return base
-
-
-def scan_one_date_with_retry(date):
-    """
-    날짜 1개만 조회.
-    ConnectionError/JSON 오류 등 일시 장애는 세션을 새로 만들고 1회 재시도.
-    2번 모두 실패하면 None을 반환하고 기존 상태를 건드리지 않는다.
-    """
-    last_error = None
-
-    for attempt in (1, 2):
-        try:
-            rows = fetch_date_primary(date)
-
-            events = {}
-            for show in dedupe(rows):
-                if show.get("event_type") in {"GV", "STAGE"}:
-                    events[show_key(show)] = show
-
-            return events, None
-
-        except Exception as error:
-            last_error = error
-            reset_thread_session()
-
-            if attempt == 1:
-                time.sleep(1.0)
-
-    return None, last_error
+    return scan_dates(dates, "FULL 50-DAY")
 
 
 def scan_fixed_18_days_concurrent():
@@ -1153,39 +1136,6 @@ def send_alert(
     show,
     status,
 ):
-    # 취소표 알림은 별도 간결 형식
-    if status == "CANCEL_TICKET":
-        start = show.get("time", "")
-        end = show.get("end_time", "")
-        time_text = (
-            f"{start}–{end}"
-            if end
-            else start
-        )
-
-        movie = (
-            show.get("movie")
-            or "영화명 확인 필요"
-        )
-        screen = (
-            show.get("screen")
-            or "상영관 정보 없음"
-        )
-        link = booking_url(show)
-
-        content = (
-            f"<@{DISCORD_MENTION_ID}>\n"
-            f"**🎟️ 취소표가 생겼습니다**\n"
-            f"**🎬 {SITE_NAME} · {event_name(show)}**\n"
-            f"**📅 {show.get('date')}**\n"
-            f"**[🎟 {time_text} · {movie} · {screen}]({link})**"
-        )
-
-        discord_post(
-            content
-        )
-        return
-
     if status == "PREPARING":
         title = (
             f"⏳ {SITE_NAME} "
@@ -1367,18 +1317,11 @@ def send_test():
 
     time.sleep(1)
 
-    discord_post(
-        f"<@{DISCORD_MENTION_ID}>\n"
-        f"**🎟️ {SITE_NAME} "
-        f"무대인사 취소표가 생겼습니다 테스트**\n"
-        f"취소표 알림 전송 정상.\n"
-        f"※ 실제 회차가 아닌 테스트입니다."
-    )
-
     log(
         "DISCORD TEST COMPLETE: "
-        "상영준비중 + 예매 오픈 + 취소표"
+        "상영준비중 + 예매 오픈"
     )
+
 
 
 # ============================================================
@@ -1744,32 +1687,18 @@ def process(
 
         # ----------------------------------------------------
         # 매진 / 마감은 알림 없음.
-        # 매진 시각은 저장해서 이후 취소표 재오픈을 구분한다.
+        # 상태만 저장한다.
+        # 매진 후 다시 OPEN이 되어도 전체 알리미에서는 알리지 않는다.
         # ----------------------------------------------------
 
         if current in {
             "SOLD_OUT",
             "CLOSED",
         }:
-            new_record = record(
+            state[key] = record(
                 show,
                 current,
             )
-
-            if current == "SOLD_OUT":
-                if (
-                    previous == "SOLD_OUT"
-                    and previous_record.get("sold_out_since_kst")
-                ):
-                    new_record["sold_out_since_kst"] = (
-                        previous_record["sold_out_since_kst"]
-                    )
-                else:
-                    new_record["sold_out_since_kst"] = (
-                        now_kst().isoformat(timespec="seconds")
-                    )
-
-            state[key] = new_record
             save_state(state)
             continue
 
@@ -1808,46 +1737,14 @@ def process(
                 alert_status = "OPEN"
 
             elif previous == "SOLD_OUT":
-                sold_out_since_text = previous_record.get(
-                    "sold_out_since_kst"
+                # 취소표 감지는 특정 회차 전용 알리미로 분리.
+                # 전체 알리미에서는 매진 -> OPEN 전환을 알리지 않고 상태만 갱신.
+                state[key] = record(
+                    show,
+                    "OPEN",
                 )
-                sold_out_seconds = None
-
-                if sold_out_since_text:
-                    try:
-                        sold_out_since = datetime.fromisoformat(
-                            sold_out_since_text
-                        )
-                        sold_out_seconds = (
-                            now_kst() - sold_out_since
-                        ).total_seconds()
-                    except Exception:
-                        sold_out_seconds = None
-
-                # 120초 이상 매진 상태였다가 Y로 돌아오면 취소표로 구분.
-                # 구버전 state에 매진 시작 시각이 없으면 최초 1회는 허용.
-                if (
-                    sold_out_seconds is None
-                    or sold_out_seconds >= CANCEL_REARM_SECONDS
-                ):
-                    alert_status = "CANCEL_TICKET"
-                else:
-                    log(
-                        f"짧은 매진↔예매가능 흔들림 억제: "
-                        f"{event_name(show)} / "
-                        f"{show.get('movie')} / "
-                        f"{show.get('date')} "
-                        f"{show.get('time')} / "
-                        f"매진 유지 {sold_out_seconds:.0f}초 "
-                        f"< {CANCEL_REARM_SECONDS}초"
-                    )
-
-                    state[key] = record(
-                        show,
-                        "OPEN",
-                    )
-                    save_state(state)
-                    continue
+                save_state(state)
+                continue
 
         if alert_status:
             try:
@@ -1866,11 +1763,9 @@ def process(
                 )
                 continue
 
-            # 취소표 알림도 현재 실제 상태는 OPEN으로 저장해야
-            # 다음 사이클에 같은 알림이 반복되지 않는다.
             stored_status = (
                 "OPEN"
-                if alert_status in {"OPEN", "CANCEL_TICKET"}
+                if alert_status == "OPEN"
                 else "PREPARING"
             )
 
@@ -1884,9 +1779,6 @@ def process(
             if alert_status == "PREPARING":
                 transition = "상영준비중"
                 icon = "⏳"
-            elif alert_status == "CANCEL_TICKET":
-                transition = "취소표가 생겼습니다"
-                icon = "🎟️"
             elif previous == "PREPARING":
                 transition = "상영준비중 -> 예매 오픈"
                 icon = "🚨"
@@ -1929,15 +1821,11 @@ def main():
     log("예매 상태: Y=예매 가능 / E=매진 / N=예매 불가·마감")
     log("상영준비중: API의 상영준비중/예매준비중 문구를 감지")
     log("선행 진단: API에서 GV/무대인사 신호가 처음 보이면 Actions 로그에 표시")
-    log("취소표: 매진 후 재오픈 시 '취소표가 생겼습니다'로 별도 알림")
-    log("감시 범위: 오늘 ~ +42일 (43일 전체)")
-    log(
-        "분산 감시: 오늘 5분 / 내일(+1) 20초 / +2~+4일 90초 / "
-        "+5~+14일 30초 / +15~+30일 60초 / +31~+42일 5분 / "
-        "상영준비중·매진 날짜 20초"
-    )
+    log("취소표 감지: 사용 안 함 (특정 회차 전용 알리미로 분리)")
+    log("감시 범위: 오늘 ~ +49일 (50일 전체)")
+    log(f"목표 감시 주기: {SCAN_INTERVAL:.0f}초 (50일 전체 순차 조회)")
     log(f"RUN SECONDS: {RUN_SECONDS}")
-    log(f"상태 로그: 첫 43일 확인 완료 즉시 + 이후 {STATUS_LOG_SECONDS // 60}분마다 요약")
+    log(f"상태 로그: 첫 50일 스캔 완료 즉시 + 이후 {STATUS_LOG_SECONDS // 60}분마다 요약")
     log("5분 고정 동시점검: KST 매시 00/05/10/.../55분에 +4~+21일 18일을 18개 worker로 동시 확인")
     log("정상 날짜별 API 로그: 생략 (오류/새 신호/상태 변화는 즉시 표시)")
     log("=" * 60)
@@ -1955,220 +1843,180 @@ def main():
 
     state = load_state()
 
-    # 최초 정상 실행은 43일 전체 baseline.
+    # 최초 정상 실행은 50일 전체 baseline.
     if not BASELINE_FILE.exists():
-        events, mode, errors = scan_all_43_days()
+        events, mode, errors = scan_all_50_days()
         log(f"FETCH MODE: {mode}")
         log(f"SCAN ERRORS: {errors}")
         make_baseline(events)
         return
 
     started = time.time()
+    cycle = 0
 
     heartbeat_started = started
-    heartbeat_requests = 0
-    heartbeat_success = 0
+    heartbeat_cycles = 0
     heartbeat_errors = 0
     heartbeat_alerts = 0
+    latest_events = {}
 
-    dates = make_dates(0, TOTAL_DAYS)
-    date_event_cache = {}
-
-    # 실행 직후 43일 전체를 한 번 확인해 현재 캐시를 만든다.
-    initial_started = time.time()
-    initial_events, initial_mode, initial_errors = scan_all_43_days()
-
-    for date in dates:
-        date_event_cache[date] = {
-            key: event
-            for key, event in initial_events.items()
-            if event.get("date") == date
-        }
-
-    log_new_event_diagnostics(initial_events, state)
-    initial_sent, _ = process(initial_events, state)
-    save_state(state)
-
-    initial_elapsed = time.time() - initial_started
-    initial_counts = counts(initial_events)
-
-    log(
-        f"✅ 첫 43일 감시 확인 완료 | {initial_elapsed:.1f}초 | "
-        f"GV {initial_counts['GV']} | 무대인사 {initial_counts['STAGE']} | "
-        f"상영준비중 {initial_counts['PREPARING']} | "
-        f"예매가능 {initial_counts['OPEN']} | 매진 {initial_counts['SOLD_OUT']} | "
-        f"오류 {initial_errors} | 알림 {initial_sent}"
-    )
-
-    now_mono = time.monotonic()
-    next_due = {}
-
-    today_date = now_kst().date()
-    for date in dates:
-        target = datetime.strptime(date, "%Y-%m-%d").date()
-        offset = (target - today_date).days
-        interval = base_interval_for_offset(offset)
-
-        # 첫 요청이 한 순간에 다시 몰리지 않도록 각 구간에 자연스럽게 분산.
-        # 이미 방금 43일 전체를 확인했으므로 interval 안에서 나눠 시작한다.
-        same_band = [
-            d for d in dates
-            if base_interval_for_offset(
-                (datetime.strptime(d, "%Y-%m-%d").date() - today_date).days
-            ) == interval
-        ]
-        idx = same_band.index(date)
-        spread = interval * (idx + 1) / max(1, len(same_band))
-        next_due[date] = now_mono + spread
-
-    # 실행 직후 같은 5분 슬롯은 다시 동시점검하지 않고 다음 경계부터.
+    # 실행 직후 같은 5분 구간을 중복 점검하지 않고, 다음 5분 경계부터 시작한다.
     fixed_now = now_kst()
     last_fixed_scan_slot = (
         fixed_now.strftime("%Y%m%d%H"),
         fixed_now.minute // FIXED_SAFETY_SCAN_MINUTES,
     )
 
-    log(
-        "📡 날짜별 분산 감시 시작 | 오늘 5분 / 내일(+1) 20초 / "
-        "+2~+4일 90초 / +5~+14일 30초 / +15~+30일 60초 / "
-        "+31~+42일 5분 | 상영준비중·매진 날짜 20초"
-    )
-    log(
-        "🔎 5분 고정 동시점검 유지 | 매시 00/05/10/.../55분 | "
-        "+4~+21일 18일 완전 동시"
-    )
-
     while time.time() - started < RUN_SECONDS:
+        cycle += 1
+        cycle_started = time.time()
+
+        try:
+            cycle_events, mode, errors = scan_all_50_days()
+            latest_events = cycle_events
+
+            # 오류는 10분 요약을 기다리지 않고 즉시 표시.
+            if errors:
+                log(
+                    f"⚠️ CYCLE #{cycle} 50일 조회 오류: "
+                    f"{errors}일 / MODE={mode}"
+                )
+
+            # process 전에 실행해야 state에 아직 없는 '최초 API 신호'를 잡을 수 있다.
+            early_detected = log_new_event_diagnostics(
+                cycle_events,
+                state,
+            )
+
+            sent, unknown_logged = process(
+                cycle_events,
+                state,
+            )
+
+            save_state(state)
+
+            heartbeat_cycles += 1
+            heartbeat_errors += errors
+            heartbeat_alerts += sent
+
+            elapsed = time.time() - cycle_started
+            c = counts(cycle_events)
+
+            # 첫 한 바퀴는 바로 보여줘서 '실제로 살아 있음'을 확인할 수 있게 한다.
+            if cycle == 1:
+                log(
+                    f"✅ 첫 50일 스캔 완료 | CYCLE #1 | "
+                    f"{elapsed:.1f}초 | GV {c['GV']} | "
+                    f"무대인사 {c['STAGE']} | 오류 {errors} | 알림 {sent}"
+                )
+
+            # 이후에는 10분(기본값)마다 한 줄 상태만 출력.
+            heartbeat_elapsed = time.time() - heartbeat_started
+            if heartbeat_elapsed >= STATUS_LOG_SECONDS:
+                minutes = max(1, round(heartbeat_elapsed / 60))
+                log(
+                    f"💚 정상 감시중 | 최근 {minutes}분 "
+                    f"{heartbeat_cycles}사이클 완료 | 누적 CYCLE #{cycle} | "
+                    f"50일 조회 | GV {c['GV']} | 무대인사 {c['STAGE']} | "
+                    f"상영준비중 {c['PREPARING']} | 예매가능 {c['OPEN']} | "
+                    f"매진 {c['SOLD_OUT']} | 오류 {heartbeat_errors} | "
+                    f"알림 {heartbeat_alerts} | "
+                    f"{now_kst().strftime('%H:%M:%S KST')}"
+                )
+                heartbeat_started = time.time()
+                heartbeat_cycles = 0
+                heartbeat_errors = 0
+                heartbeat_alerts = 0
+
+            # --------------------------------------------------------
+            # KST 매시 00/05/10/.../55분 고정 +4~+21일 18일 동시 점검
+            # - 기존 연속 감시는 그대로 둔다.
+            # - 5분 경계가 바뀐 뒤 최초 한 번만 18일 동시 스캔한다.
+            # - 여기서 발견한 이벤트/상태 변화도 평소와 동일하게 처리한다.
+            # --------------------------------------------------------
+            fixed_now = now_kst()
+            fixed_scan_slot = (
+                fixed_now.strftime("%Y%m%d%H"),
+                fixed_now.minute // FIXED_SAFETY_SCAN_MINUTES,
+            )
+
+            if fixed_scan_slot != last_fixed_scan_slot:
+                last_fixed_scan_slot = fixed_scan_slot
+                fixed_started = time.time()
+
+                try:
+                    fixed_events, fixed_mode, fixed_errors = scan_fixed_18_days_concurrent()
+                    latest_events = fixed_events
+
+                    if fixed_errors:
+                        log(
+                            f"⚠️ {fixed_now.strftime('%H:%M')} 5분 고정 18일 동시점검 오류 | "
+                            f"{fixed_errors}일 / MODE={fixed_mode}"
+                        )
+
+                    log_new_event_diagnostics(
+                        fixed_events,
+                        state,
+                    )
+
+                    fixed_sent, fixed_unknown = process(
+                        fixed_events,
+                        state,
+                    )
+                    save_state(state)
+
+                    fixed_elapsed = time.time() - fixed_started
+                    fixed_counts = counts(fixed_events)
+
+                    heartbeat_errors += fixed_errors
+                    heartbeat_alerts += fixed_sent
+
+                    if fixed_errors:
+                        fixed_icon = "⚠️"
+                    else:
+                        fixed_icon = "🔎"
+
+                    log(
+                        f"{fixed_icon} {fixed_now.strftime('%H:%M')} "
+                        f"5분 고정 18일 동시점검 완료 | +4~+21일 | "
+                        f"GV {fixed_counts['GV']} | 무대인사 {fixed_counts['STAGE']} | "
+                        f"상영준비중 {fixed_counts['PREPARING']} | "
+                        f"예매가능 {fixed_counts['OPEN']} | 매진 {fixed_counts['SOLD_OUT']} | "
+                        f"오류 {fixed_errors} | 알림 {fixed_sent} | "
+                        f"{fixed_elapsed:.1f}초"
+                    )
+
+                except Exception as fixed_error:
+                    heartbeat_errors += 1
+                    log(
+                        f"⚠️ {fixed_now.strftime('%H:%M')} "
+                        f"5분 고정 18일 동시점검 실패 | "
+                        f"{type(fixed_error).__name__}: {fixed_error}"
+                    )
+
+        except Exception as error:
+            heartbeat_errors += 1
+            log(
+                f"SCAN/PROCESS ERROR: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        elapsed = time.time() - cycle_started
         remaining = RUN_SECONDS - (time.time() - started)
+
         if remaining <= 0:
             break
 
-        # --------------------------------------------------------
-        # 5분 고정 +4~+21일 18일 동시점검
-        # --------------------------------------------------------
-        fixed_now = now_kst()
-        fixed_scan_slot = (
-            fixed_now.strftime("%Y%m%d%H"),
-            fixed_now.minute // FIXED_SAFETY_SCAN_MINUTES,
+        wait = min(
+            max(
+                0.0,
+                SCAN_INTERVAL - elapsed,
+            ),
+            remaining,
         )
 
-        if fixed_scan_slot != last_fixed_scan_slot:
-            last_fixed_scan_slot = fixed_scan_slot
-            fixed_started = time.time()
-
-            try:
-                fixed_events, fixed_mode, fixed_errors = scan_fixed_18_days_concurrent()
-
-                # 성공한 날짜들만 cache 반영. 실패 날짜는 기존 cache 유지.
-                successful_dates = {
-                    event.get("date")
-                    for event in fixed_events.values()
-                    if event.get("date")
-                }
-                for date in successful_dates:
-                    date_event_cache[date] = {
-                        key: event
-                        for key, event in fixed_events.items()
-                        if event.get("date") == date
-                    }
-
-                log_new_event_diagnostics(fixed_events, state)
-                fixed_sent, _ = process(fixed_events, state)
-                save_state(state)
-
-                fixed_elapsed = time.time() - fixed_started
-                fixed_counts = counts(fixed_events)
-
-                heartbeat_requests += FIXED_CONCURRENT_DAYS
-                heartbeat_success += max(0, FIXED_CONCURRENT_DAYS - fixed_errors)
-                heartbeat_errors += fixed_errors
-                heartbeat_alerts += fixed_sent
-
-                icon = "🔎" if fixed_errors == 0 else "⚠️"
-                log(
-                    f"{icon} {fixed_now.strftime('%H:%M')} "
-                    f"5분 고정 18일 동시점검 완료 | +4~+21일 | "
-                    f"GV {fixed_counts['GV']} | 무대인사 {fixed_counts['STAGE']} | "
-                    f"상영준비중 {fixed_counts['PREPARING']} | "
-                    f"예매가능 {fixed_counts['OPEN']} | 매진 {fixed_counts['SOLD_OUT']} | "
-                    f"오류 {fixed_errors} | 알림 {fixed_sent} | "
-                    f"{fixed_elapsed:.1f}초"
-                )
-
-            except Exception as fixed_error:
-                heartbeat_errors += 1
-                log(
-                    f"⚠️ {fixed_now.strftime('%H:%M')} "
-                    f"5분 고정 18일 동시점검 실패 | "
-                    f"{type(fixed_error).__name__}: {fixed_error}"
-                )
-
-        # --------------------------------------------------------
-        # 날짜별 분산 감시: 지금 due인 날짜 1개씩 처리
-        # --------------------------------------------------------
-        now_mono = time.monotonic()
-        due_dates = [
-            date for date in dates
-            if next_due.get(date, 0) <= now_mono
-        ]
-
-        if due_dates:
-            due_dates.sort(key=lambda d: next_due.get(d, 0))
-            date = due_dates[0]
-
-            events, error = scan_one_date_with_retry(date)
-            heartbeat_requests += 1
-
-            if error is not None or events is None:
-                heartbeat_errors += 1
-                log(
-                    f"⚠️ 날짜 조회 실패(기존 상태 유지) | {date} | "
-                    f"{type(error).__name__}: {error}"
-                )
-            else:
-                heartbeat_success += 1
-                date_event_cache[date] = events
-
-                log_new_event_diagnostics(events, state)
-                sent, _ = process(events, state)
-                save_state(state)
-                heartbeat_alerts += sent
-
-            # 조회가 끝난 현재 상태 기준으로 다음 주기 결정.
-            interval = interval_for_date(date, state)
-            next_due[date] = time.monotonic() + interval
-            continue
-
-        # --------------------------------------------------------
-        # 10분 요약
-        # --------------------------------------------------------
-        heartbeat_elapsed = time.time() - heartbeat_started
-        if heartbeat_elapsed >= STATUS_LOG_SECONDS:
-            all_cached_events = {}
-            for events in date_event_cache.values():
-                all_cached_events.update(events)
-
-            c = counts(all_cached_events)
-            minutes = max(1, round(heartbeat_elapsed / 60))
-            icon = "💚" if heartbeat_errors == 0 else "⚠️"
-
-            log(
-                f"{icon} 감시중 | 최근 {minutes}분 날짜조회 "
-                f"{heartbeat_requests}회 / 성공 {heartbeat_success}회 | "
-                f"43일 캐시 | GV {c['GV']} | 무대인사 {c['STAGE']} | "
-                f"상영준비중 {c['PREPARING']} | 예매가능 {c['OPEN']} | "
-                f"매진 {c['SOLD_OUT']} | 오류 {heartbeat_errors} | "
-                f"알림 {heartbeat_alerts} | "
-                f"{now_kst().strftime('%H:%M:%S KST')}"
-            )
-
-            heartbeat_started = time.time()
-            heartbeat_requests = 0
-            heartbeat_success = 0
-            heartbeat_errors = 0
-            heartbeat_alerts = 0
-
-        time.sleep(IDLE_SLEEP)
+        if wait > 0:
+            time.sleep(wait)
 
     log("")
     log("=" * 60)
