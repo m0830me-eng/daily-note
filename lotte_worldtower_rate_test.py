@@ -47,6 +47,7 @@ CINEMA_CODE = "1016"
 
 TOTAL_DAYS = 50
 SCAN_INTERVAL = 10.0
+LOG_INTERVAL = 600.0  # 정상 상태 요약은 10분마다
 
 RUN_SECONDS = int(os.getenv("RUN_SECONDS", "19200"))
 
@@ -707,17 +708,8 @@ def fetch_date_primary(date):
     else:
         final_event_count = primary_event_count
 
-    log(
-        f"API {date.replace('-', '')} "
-        f"STATUS={response.status_code} "
-        f"TIME={time.time() - started:.2f}s "
-        f"SIZE={len(response.content):,} bytes "
-        f"ROWS={len(rows)} "
-        f"EVENTS={final_event_count} "
-        f"ENRICH_CALLS={enrich_calls} "
-        f"ENRICH_NEW_EVENTS={enrich_added_events}"
-    )
-
+    # 정상 날짜별 API 로그는 출력하지 않는다.
+    # 오류 / 새 GV·무대인사 신호 / 상태 변화만 즉시 표시한다.
     return rows
 
 
@@ -753,13 +745,6 @@ def make_dates(start_offset, day_count):
 def scan_dates(dates, label):
     all_rows = []
     errors = 0
-
-    log("")
-    log(
-        f"{label} SCAN: "
-        f"{dates[0]} ~ {dates[-1]} "
-        f"({len(dates)} DAYS)"
-    )
 
     for date in dates:
         try:
@@ -1231,6 +1216,22 @@ def counts(events):
             for item in values
         ),
     }
+
+
+def log_compact_summary(events, mode, errors, state, prefix="정상 감시중"):
+    """첫 스캔 직후 + 이후 10분마다만 보여주는 짧은 상태 요약."""
+    c = counts(events)
+
+    log("")
+    log(
+        f"{prefix} · 50일 감시 · "
+        f"GV {c['GV']} · 무대인사 {c['STAGE']} · "
+        f"상영준비중 {c['PREPARING']} · 예매가능 {c['OPEN']} · "
+        f"매진 {c['SOLD_OUT']} · 오류 {errors} · 저장상태 {len(state)}"
+    )
+
+    if mode not in {"ALL_MOVIES+FUTURE_ENRICH", "ALL_MOVIES"}:
+        log(f"FETCH MODE: {mode}")
 
 
 def print_counts(
@@ -1715,6 +1716,7 @@ def main():
     log("취소표 감지: 사용 안 함 (특정 회차 전용 알리미로 분리)")
     log("감시 범위: 오늘 ~ +49일 (50일 전체)")
     log(f"목표 감시 주기: {SCAN_INTERVAL:.0f}초 (50일 전체 순차 조회)")
+    log("상태 로그: 첫 50일 스캔 직후 + 이후 10분마다 요약 / 날짜별 정상 API 로그 생략")
     log(f"RUN SECONDS: {RUN_SECONDS}")
     log("=" * 60)
 
@@ -1747,35 +1749,30 @@ def main():
         log("")
         log("기준값 버전이 없거나 이전 버전입니다. 현재 50일 회차를 알림 없이 다시 기준값으로 등록합니다.")
         events, mode, errors = scan_all_50_days()
-        log(f"FETCH MODE: {mode}")
-        log(f"SCAN ERRORS: {errors}")
         make_baseline(events)
+        baseline_state = load_state()
+        log_compact_summary(
+            events,
+            mode,
+            errors,
+            baseline_state,
+            prefix="첫 50일 스캔 완료",
+        )
         return
 
     started = time.time()
     cycle = 0
+    last_status_log = 0.0
 
     while time.time() - started < RUN_SECONDS:
         cycle += 1
         cycle_started = time.time()
 
-        log("")
-        log("=" * 60)
-        log(
-            f"CYCLE #{cycle} "
-            f"{now_kst().strftime('%Y-%m-%d %H:%M:%S KST')}"
-        )
-        log("50일 전체 스캔 시작")
-        log("=" * 60)
-
         try:
             cycle_events, mode, errors = scan_all_50_days()
-            log(f"FETCH MODE: {mode}")
-            log(f"SCAN ERRORS: {errors}")
-
-            print_counts(cycle_events)
 
             # process 전에 실행해야 state에 아직 없는 '최초 API 신호'를 잡을 수 있다.
+            # 새 신호 / 상태 변화 / Discord 오류는 아래 함수들에서 즉시 로그된다.
             early_detected, early_discord_sent = log_new_event_diagnostics(
                 cycle_events,
                 state,
@@ -1788,23 +1785,25 @@ def main():
 
             save_state(state)
 
-            log(
-                f"이번 사이클 API 선행 진단: "
-                f"{early_detected}건"
-            )
-            log(
-                f"이번 사이클 Discord 알림: "
-                f"{early_discord_sent + sent}건 "
-                f"(선행 감지 {early_discord_sent} + 상태 알림 {sent})"
-            )
-            log(
-                f"이번 사이클 미확인 상태 진단 로그: "
-                f"{unknown_logged}건"
-            )
-            log(
-                f"저장된 상태: "
-                f"{len(state)}건"
-            )
+            # 조회 오류는 10분을 기다리지 않고 즉시 표시.
+            if errors:
+                log(
+                    f"⚠️ 50일 스캔 오류: {errors}건 / "
+                    f"FETCH MODE={mode}"
+                )
+
+            # 정상 상태는 첫 50일 스캔 직후 한 번,
+            # 이후에는 10분마다 한 줄 요약만 출력.
+            now_mono = time.time()
+            if last_status_log == 0.0 or now_mono - last_status_log >= LOG_INTERVAL:
+                log_compact_summary(
+                    cycle_events,
+                    mode,
+                    errors,
+                    state,
+                    prefix="첫 50일 스캔 완료" if last_status_log == 0.0 else "정상 감시중",
+                )
+                last_status_log = now_mono
 
         except Exception as error:
             log(
@@ -1826,20 +1825,9 @@ def main():
             remaining,
         )
 
-        log(
-            f"사이클 소요시간: {elapsed:.2f}초"
-        )
-
         if wait > 0:
-            log(
-                f"다음 50일 스캔까지 {wait:.2f}초 대기"
-            )
             time.sleep(wait)
-        else:
-            log(
-                "50일 조회 시간이 목표 10초 이상이므로 "
-                "대기 없이 다음 사이클을 시작합니다."
-            )
+        # 50일 조회 자체가 10초를 넘으면 대기 없이 바로 다음 사이클.
 
     log("")
     log("=" * 60)
