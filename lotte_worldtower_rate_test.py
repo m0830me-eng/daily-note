@@ -107,6 +107,17 @@ def get_session():
     return session
 
 
+def reset_session():
+    """현재 스레드의 세션만 버리고 다음 요청에서 새 세션을 만든다."""
+    session = getattr(_THREAD_LOCAL, "session", None)
+    if session is not None:
+        try:
+            session.close()
+        except Exception:
+            pass
+    _THREAD_LOCAL.session = None
+
+
 # ============================================================
 # Basic helpers
 # ============================================================
@@ -137,6 +148,16 @@ def bounded_gv(text):
 
 
 def lotte_post(payload):
+    """
+    롯데 서버의 순간적인 연결 종료/빈 응답을 한 번만 자동 복구한다.
+
+    - ConnectionError / Timeout
+    - JSONDecodeError 계열(ValueError)
+    - 일시적인 429/5xx
+
+    첫 실패 때 현재 스레드 세션을 버리고 잠깐 쉰 뒤 1회 재시도.
+    두 번째도 실패하면 기존 코드처럼 예외를 위로 올려 Actions 로그에 남긴다.
+    """
     files = {
         "paramList": (
             None,
@@ -147,14 +168,60 @@ def lotte_post(payload):
         )
     }
 
-    response = get_session().post(
-        LOTTE_API,
-        files=files,
-        timeout=15,
-    )
-    response.raise_for_status()
+    transient_statuses = {
+        429, 500, 502, 503, 504,
+    }
 
-    return response.json(), response
+    last_error = None
+
+    for attempt in range(2):
+        try:
+            response = get_session().post(
+                LOTTE_API,
+                files=files,
+                timeout=15,
+            )
+
+            if response.status_code in transient_statuses:
+                if attempt == 0:
+                    reset_session()
+                    time.sleep(0.8)
+                    continue
+
+            response.raise_for_status()
+
+            try:
+                data = response.json()
+            except ValueError as error:
+                last_error = error
+
+                if attempt == 0:
+                    reset_session()
+                    time.sleep(0.8)
+                    continue
+
+                raise
+
+            return data, response
+
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as error:
+            last_error = error
+
+            if attempt == 0:
+                reset_session()
+                time.sleep(0.8)
+                continue
+
+            raise
+
+    # 정상적으로 여기까지 올 일은 없지만, 혹시 모를 방어.
+    if last_error is not None:
+        raise last_error
+
+    raise RuntimeError("LOTTE API retry failed without an explicit error")
 
 
 def scalar_texts(obj):
