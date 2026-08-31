@@ -6,6 +6,8 @@ import json
 import os
 import re
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -30,12 +32,12 @@ import requests
 # 따라서:
 # 1) API 응답에 "상영준비중/예매준비중" 문구가 직접 있으면 상영준비중으로 처리
 # 2) Y/E/N 이외의 새 상태는 GitHub Actions 진단 로그에만 기록
-# 3) 화면 표시보다 API에 GV/무대인사 신호가 먼저 생기면 선행 감지 Discord 알림 전송
+# 3) 화면 표시보다 API에 GV/무대인사 신호가 먼저 생기면 선행 진단 로그 기록
 #
 # 감시 범위
 # ------------------------------------------------------------
-# 오늘~49일 뒤: 50일 전체를 10초 목표로 순차 조회
-# 실제 50일 조회 시간이 10초를 넘으면 조회 완료 즉시 다음 사이클 시작
+# 오늘~49일 뒤: 43일 전체를 10초 목표로 순차 조회
+# 실제 43일 조회 시간이 10초를 넘으면 조회 완료 즉시 다음 사이클 시작
 # ============================================================
 
 
@@ -45,11 +47,38 @@ SITE_NAME = "롯데시네마 월드타워"
 CINEMA_ID = "1|0001|1016"
 CINEMA_CODE = "1016"
 
-TOTAL_DAYS = 50
-SCAN_INTERVAL = 10.0
-LOG_INTERVAL = 600.0  # 정상 상태 요약은 10분마다
+TOTAL_DAYS = 43
+
+# CGV와 같은 날짜별 분산 감시
+INTERVAL_TODAY = 300.0       # 오늘: 5분
+INTERVAL_TOMORROW = 20.0     # 내일(+1): 20초
+INTERVAL_2_4 = 90.0          # +2~+4일: 90초
+INTERVAL_5_14 = 30.0         # +5~+14일: 30초
+INTERVAL_15_30 = 60.0        # +15~+30일: 60초
+INTERVAL_31_42 = 300.0       # +31~+42일: 5분
+INTERVAL_PRIORITY = 20.0     # 상영준비중/매진 날짜: 20초
+IDLE_SLEEP = 0.15
 
 RUN_SECONDS = int(os.getenv("RUN_SECONDS", "19200"))
+
+# GitHub Actions 로그 폭증 방지:
+# - 정상 API 날짜별 로그는 숨김
+# - 첫 43일 스캔 완료 시 1회 요약
+# - 이후 10분마다 정상 동작 요약(환경변수로 변경 가능)
+# - 새 이벤트/상태 변화/API 오류는 즉시 상세 로그
+STATUS_LOG_SECONDS = int(os.getenv("STATUS_LOG_SECONDS", "600"))
+VERBOSE_API_LOGS = os.getenv("VERBOSE_API_LOGS", "0").strip() == "1"
+
+# 현재 연속 50일 감시는 그대로 유지한다.
+# KST 매시 00/05/10/.../55분에는 +4일~+21일(18일)을
+# 18개 worker로 동시에 확인하는 실험용 고정 점검을 추가한다.
+FIXED_SAFETY_SCAN_MINUTES = 5
+FIXED_CONCURRENT_START_OFFSET = 4
+FIXED_CONCURRENT_DAYS = 18
+FIXED_CONCURRENT_WORKERS = 18
+
+# 같은 1석의 짧은 매진 <-> 예매가능 흔들림 반복 알림 방지
+CANCEL_REARM_SECONDS = 120
 
 DISCORD_WEBHOOK = os.getenv(
     "DISCORD_LOTTE_WORLDTOWER",
@@ -60,7 +89,6 @@ DISCORD_MENTION_ID = "1383846907847381184"
 
 STATE_FILE = Path("seen_lotte_worldtower.json")
 BASELINE_FILE = Path("baseline_lotte_worldtower.done")
-BASELINE_SCHEMA = "LOTTE_CINEMA_GV_STAGE_V2"
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -70,13 +98,22 @@ UA = (
     "Chrome/151.0.0.0 Safari/537.36"
 )
 
-SESSION = requests.Session()
-SESSION.headers.update({
+SESSION_HEADERS = {
     "User-Agent": UA,
     "Accept": "application/json, text/plain, */*",
     "Referer": "https://www.lottecinema.co.kr/NLCHS/Ticketing",
     "Origin": "https://www.lottecinema.co.kr",
-})
+}
+
+_THREAD_LOCAL = threading.local()
+
+def get_session():
+    session = getattr(_THREAD_LOCAL, "session", None)
+    if session is None:
+        session = requests.Session()
+        session.headers.update(SESSION_HEADERS)
+        _THREAD_LOCAL.session = session
+    return session
 
 
 # ============================================================
@@ -119,7 +156,7 @@ def lotte_post(payload):
         )
     }
 
-    response = SESSION.post(
+    response = get_session().post(
         LOTTE_API,
         files=files,
         timeout=15,
@@ -708,8 +745,18 @@ def fetch_date_primary(date):
     else:
         final_event_count = primary_event_count
 
-    # 정상 날짜별 API 로그는 출력하지 않는다.
-    # 오류 / 새 GV·무대인사 신호 / 상태 변화만 즉시 표시한다.
+    if VERBOSE_API_LOGS:
+        log(
+            f"API {date.replace('-', '')} "
+            f"STATUS={response.status_code} "
+            f"TIME={time.time() - started:.2f}s "
+            f"SIZE={len(response.content):,} bytes "
+            f"ROWS={len(rows)} "
+            f"EVENTS={final_event_count} "
+            f"ENRICH_CALLS={enrich_calls} "
+            f"ENRICH_NEW_EVENTS={enrich_added_events}"
+        )
+
     return rows
 
 
@@ -746,6 +793,14 @@ def scan_dates(dates, label):
     all_rows = []
     errors = 0
 
+    if VERBOSE_API_LOGS:
+        log("")
+        log(
+            f"{label} SCAN: "
+            f"{dates[0]} ~ {dates[-1]} "
+            f"({len(dates)} DAYS)"
+        )
+
     for date in dates:
         try:
             all_rows.extend(fetch_date_primary(date))
@@ -774,9 +829,138 @@ def scan_dates(dates, label):
     return events, mode, errors
 
 
-def scan_all_50_days():
+def scan_all_43_days():
     dates = make_dates(0, TOTAL_DAYS)
-    return scan_dates(dates, "FULL 50-DAY")
+    return scan_dates(dates, "FULL 43-DAY")
+
+
+
+def reset_thread_session():
+    try:
+        _THREAD_LOCAL.session = None
+    except Exception:
+        pass
+
+
+def base_interval_for_offset(offset):
+    if offset == 0:
+        return INTERVAL_TODAY
+    if offset == 1:
+        return INTERVAL_TOMORROW
+    if 2 <= offset <= 4:
+        return INTERVAL_2_4
+    if 5 <= offset <= 14:
+        return INTERVAL_5_14
+    if 15 <= offset <= 30:
+        return INTERVAL_15_30
+    return INTERVAL_31_42
+
+
+def priority_date(date, state):
+    for item in state.values():
+        if not isinstance(item, dict):
+            continue
+        if item.get("date") != date:
+            continue
+        if item.get("status") in {"PREPARING", "SOLD_OUT"}:
+            return True
+    return False
+
+
+def interval_for_date(date, state):
+    today = now_kst().date()
+    target = datetime.strptime(date, "%Y-%m-%d").date()
+    offset = (target - today).days
+
+    base = base_interval_for_offset(offset)
+    if priority_date(date, state):
+        return min(base, INTERVAL_PRIORITY)
+    return base
+
+
+def scan_one_date_with_retry(date):
+    """
+    날짜 1개만 조회.
+    ConnectionError/JSON 오류 등 일시 장애는 세션을 새로 만들고 1회 재시도.
+    2번 모두 실패하면 None을 반환하고 기존 상태를 건드리지 않는다.
+    """
+    last_error = None
+
+    for attempt in (1, 2):
+        try:
+            rows = fetch_date_primary(date)
+
+            events = {}
+            for show in dedupe(rows):
+                if show.get("event_type") in {"GV", "STAGE"}:
+                    events[show_key(show)] = show
+
+            return events, None
+
+        except Exception as error:
+            last_error = error
+            reset_thread_session()
+
+            if attempt == 1:
+                time.sleep(1.0)
+
+    return None, last_error
+
+
+def scan_fixed_18_days_concurrent():
+    """
+    매 5분 고정 안전점검용.
+    +4일~+21일 18개 날짜를 18 worker로 동시에 시작한다.
+    각 worker는 독립 requests.Session을 사용한다.
+
+    주의: fetch_date_primary()의 기존 미래 날짜 보강(enrich) 로직도 그대로 유지된다.
+    따라서 실제 요청 수는 날짜당 1회보다 늘어날 수 있다.
+    이번 버전은 롯데 서버가 이 동시성을 버티는지 확인하는 테스트 버전이다.
+    """
+    dates = make_dates(
+        FIXED_CONCURRENT_START_OFFSET,
+        FIXED_CONCURRENT_DAYS,
+    )
+
+    rows_by_date = {}
+    errors = 0
+    error_examples = []
+
+    with ThreadPoolExecutor(
+        max_workers=FIXED_CONCURRENT_WORKERS
+    ) as executor:
+        future_map = {
+            executor.submit(fetch_date_primary, date): date
+            for date in dates
+        }
+
+        for future in as_completed(future_map):
+            date = future_map[future]
+            try:
+                rows_by_date[date] = future.result()
+            except Exception as error:
+                errors += 1
+                if len(error_examples) < 3:
+                    error_examples.append(
+                        f"{date}: {type(error).__name__}: {error}"
+                    )
+
+    all_rows = []
+    for date in dates:
+        all_rows.extend(rows_by_date.get(date, []))
+
+    events = {}
+    for show in dedupe(all_rows):
+        if show.get("event_type") in {"GV", "STAGE"}:
+            events[show_key(show)] = show
+
+    if error_examples:
+        log(
+            "⚠️ 18일 동시점검 오류 예시: "
+            + " | ".join(error_examples)
+        )
+
+    return events, "CONCURRENT_18DAY", errors
 
 
 # ============================================================
@@ -917,12 +1101,12 @@ def event_name(show):
 
 
 def discord_post(content):
-    # 예전에 정상 사용하던 GitHub Secret 값을 그대로 허용한다.
-    # discord.com / discordapp.com / canary.discord.com 등 도메인 형태를
-    # 코드에서 임의로 제한하지 않고, 실제 Discord 응답으로 유효성을 확인한다.
-    if not DISCORD_WEBHOOK:
+    if not DISCORD_WEBHOOK.startswith(
+        "https://discord.com/api/webhooks/"
+    ):
         raise RuntimeError(
-            "DISCORD_LOTTE_WORLDTOWER Secret이 비어 있습니다."
+            "DISCORD_LOTTE_WORLDTOWER "
+            "Secret이 올바르지 않습니다."
         )
 
     payload = {
@@ -965,42 +1149,93 @@ def show_when(show):
     return start
 
 
-def format_event_alert(show, status):
-    """Discord 실제 알림 형식.
+def send_alert(
+    show,
+    status,
+):
+    # 취소표 알림은 별도 간결 형식
+    if status == "CANCEL_TICKET":
+        start = show.get("time", "")
+        end = show.get("end_time", "")
+        time_text = (
+            f"{start}–{end}"
+            if end
+            else start
+        )
 
-    선행 감지 / 상영준비중 / 예매 오픈을 서로 다른 첫 줄로 구분하되,
-    회차 본문은 항상 같은 3줄 형식을 사용한다.
-    """
-    kind = event_name(show)
-    url = booking_url(show)
+        movie = (
+            show.get("movie")
+            or "영화명 확인 필요"
+        )
+        screen = (
+            show.get("screen")
+            or "상영관 정보 없음"
+        )
+        link = booking_url(show)
 
-    start_time = norm(show.get("time")) or "시간 확인 필요"
-    end_time = norm(show.get("end_time"))
-    when = f"{start_time}–{end_time}" if end_time else start_time
+        content = (
+            f"<@{DISCORD_MENTION_ID}>\n"
+            f"**🎟️ 취소표가 생겼습니다**\n"
+            f"**🎬 {SITE_NAME} · {event_name(show)}**\n"
+            f"**📅 {show.get('date')}**\n"
+            f"**[🎟 {time_text} · {movie} · {screen}]({link})**"
+        )
 
-    movie = show.get("movie") or "영화명 확인 필요"
-    screen = show.get("screen") or "상영관 정보 없음"
+        discord_post(
+            content
+        )
+        return
 
-    if status == "DETECTED":
-        status_line = f"🔎 {kind}가 감지됐습니다"
-    elif status == "PREPARING":
-        status_line = "⏳ 상영준비중"
+    if status == "PREPARING":
+        title = (
+            f"⏳ {SITE_NAME} "
+            f"{event_name(show)} 상영준비중"
+        )
+
+        action = (
+            "예매가 열리는지 계속 확인합니다."
+        )
+
     else:
-        status_line = "🎟️ 예매가 열렸습니다"
+        title = (
+            f"🚨 {SITE_NAME} "
+            f"{event_name(show)} 예매 오픈!"
+        )
 
-    lines = [
-        f"<@{DISCORD_MENTION_ID}>",
-        status_line,
-        f"[🎬 {SITE_NAME} · {kind}]({url})",
-        f"📅 {show.get('date')}",
-        f"🎟 {when} · {movie} · {screen}",
-    ]
+        action = (
+            "지금 바로 예매 확인해."
+        )
 
-    return "\n".join(lines)
+    seat = ""
 
+    if show.get("remain"):
+        seat = (
+            f"\n💺 잔여 "
+            f"{show['remain']}"
+        )
 
-def send_alert(show, status):
-    discord_post(format_event_alert(show, status))
+        if show.get("total"):
+            seat += (
+                f" / {show['total']}"
+            )
+
+    content = (
+        f"<@{DISCORD_MENTION_ID}>\n"
+        f"**{title}**\n"
+        f"🎬 "
+        f"{show.get('movie') or '영화명 확인 필요'}\n"
+        f"📅 {show.get('date')}   "
+        f"⏰ {show_when(show)}\n"
+        f"🎞️ "
+        f"{show.get('screen') or '상영관 정보 없음'}"
+        f"{seat}\n"
+        f"{action}\n"
+        f"🎟️ {booking_url(show)}"
+    )
+
+    discord_post(
+        content
+    )
 
 
 def diagnostic_fields(show):
@@ -1112,63 +1347,38 @@ def send_unknown_status(show):
 
 
 def send_test():
-    # 예전 가짜 테스트 메시지는 사용하지 않는다.
-    # 현재 실제 GV 1개로 3종 실제 알림 형식을 그대로 테스트한다.
-    send_existing_gv_test()
-
-
-def send_existing_gv_test():
-    """현재 50일 안의 실제 GV 1개로 Discord 3종 알림을 테스트한다.
-
-    Discord에는 '테스트' 문구를 넣지 않는다.
-    state/baseline 파일은 읽거나 수정하지 않는다.
-    """
-    log("")
-    log("CURRENT GV DISCORD TEST: 실제 GV 1개를 조회합니다.")
-
-    events, mode, errors = scan_all_50_days()
-    log(f"FETCH MODE: {mode}")
-    log(f"SCAN ERRORS: {errors}")
-
-    gvs = [
-        show
-        for show in events.values()
-        if show.get("event_type") == "GV"
-    ]
-
-    if not gvs:
-        log("CURRENT GV DISCORD TEST: 현재 감지된 GV가 없습니다.")
-        return
-
-    gvs.sort(
-        key=lambda show: (
-            0 if show.get("booking_state") == "OPEN" else 1,
-            show.get("date", ""),
-            show.get("time", ""),
-            show.get("movie", ""),
-        )
+    discord_post(
+        f"<@{DISCORD_MENTION_ID}>\n"
+        f"**⏳ {SITE_NAME} "
+        f"무대인사 상영준비중 테스트**\n"
+        f"상영준비중 알림 전송 정상.\n"
+        f"※ 실제 회차가 아닌 테스트입니다."
     )
 
-    show = gvs[0]
+    time.sleep(1)
 
-    # Discord에는 아래 3개가 각각 실제 운영 형식 그대로 전송된다.
-    test_statuses = (
-        "DETECTED",
-        "PREPARING",
-        "OPEN",
+    discord_post(
+        f"<@{DISCORD_MENTION_ID}>\n"
+        f"**🚨 {SITE_NAME} "
+        f"무대인사 예매 오픈 테스트**\n"
+        f"예매 오픈 알림 전송 정상.\n"
+        f"※ 실제 회차가 아닌 테스트입니다."
     )
 
-    for status in test_statuses:
-        send_alert(show, status)
-        time.sleep(0.7)
+    time.sleep(1)
+
+    discord_post(
+        f"<@{DISCORD_MENTION_ID}>\n"
+        f"**🎟️ {SITE_NAME} "
+        f"무대인사 취소표가 생겼습니다 테스트**\n"
+        f"취소표 알림 전송 정상.\n"
+        f"※ 실제 회차가 아닌 테스트입니다."
+    )
 
     log(
-        "CURRENT GV DISCORD TEST SENT: "
-        "선행 감지 + 상영준비중 + 예매 오픈 / "
-        f"{show.get('date')} / {show.get('movie')} / "
-        f"{show.get('time')} / {show.get('screen')}"
+        "DISCORD TEST COMPLETE: "
+        "상영준비중 + 예매 오픈 + 취소표"
     )
-    log("STATE/BASELINE: 변경하지 않았습니다.")
 
 
 # ============================================================
@@ -1216,22 +1426,6 @@ def counts(events):
             for item in values
         ),
     }
-
-
-def log_compact_summary(events, mode, errors, state, prefix="정상 감시중"):
-    """첫 스캔 직후 + 이후 10분마다만 보여주는 짧은 상태 요약."""
-    c = counts(events)
-
-    log("")
-    log(
-        f"{prefix} · 50일 감시 · "
-        f"GV {c['GV']} · 무대인사 {c['STAGE']} · "
-        f"상영준비중 {c['PREPARING']} · 예매가능 {c['OPEN']} · "
-        f"매진 {c['SOLD_OUT']} · 오류 {errors} · 저장상태 {len(state)}"
-    )
-
-    if mode not in {"ALL_MOVIES+FUTURE_ENRICH", "ALL_MOVIES"}:
-        log(f"FETCH MODE: {mode}")
 
 
 def print_counts(
@@ -1340,7 +1534,7 @@ def print_all_events(events):
 
 
 # ============================================================
-# API 선행 감지 (Discord 전송)
+# API 선행 진단 로그 (Discord 전송 안 함)
 # ============================================================
 
 def state_name_korean(status):
@@ -1354,15 +1548,12 @@ def state_name_korean(status):
 
 
 def log_new_event_diagnostics(events, state):
-    """API에 GV/무대인사 신호가 처음 생긴 순간을 Discord에 알린다.
-
-    - 기존 state에 없는 회차만 최초 1회 대상
-    - Discord 전송에 성공하면 임시 DETECTED 상태를 state에 남긴다.
-      뒤의 예매오픈/상영준비중 전송이 실패해도 선행 감지가 반복되지 않는다.
-    - 실제 booking 상태는 같은 사이클의 process()가 곧바로 덮어쓴다.
+    """
+    화면 표시 여부와 무관하게 롯데 API에 GV/무대인사 신호가 먼저 생기면
+    GitHub Actions 로그에 최초 1회 표시한다.
+    Discord 알림은 여기서 보내지 않는다.
     """
     detected = 0
-    discord_sent = 0
 
     ordered = sorted(
         events.items(),
@@ -1375,6 +1566,7 @@ def log_new_event_diagnostics(events, state):
     )
 
     for key, show in ordered:
+        # 이미 state에 있으면 이전 사이클/기준값에서 본 회차이므로 반복 출력 안 함.
         if key in state:
             continue
 
@@ -1387,7 +1579,7 @@ def log_new_event_diagnostics(events, state):
         ) or "-"
 
         log("")
-        log("🔎 API 선행 감지")
+        log("🔎 API 선행 진단")
         log(f"{kind}가 감지됐습니다")
         log(
             f"{show.get('date')} / "
@@ -1402,36 +1594,12 @@ def log_new_event_diagnostics(events, state):
         )
         detected += 1
 
-        try:
-            send_alert(show, "DETECTED")
-        except Exception as error:
-            log(
-                f"DISCORD ERROR (선행 감지): {kind} / "
-                f"{show.get('movie')} / {show.get('date')} "
-                f"{show.get('time')} / {error}"
-            )
-            continue
-
-        # 임시 상태. process()가 현재 실제 상태로 교체한다.
-        state[key] = record(show, "DETECTED")
-        save_state(state)
-        discord_sent += 1
-
-    return detected, discord_sent
+    return detected
 
 
 # ============================================================
 # Baseline
 # ============================================================
-
-def baseline_schema_ok():
-    if not BASELINE_FILE.exists():
-        return False
-    try:
-        return BASELINE_FILE.read_text(encoding="utf-8").strip() == BASELINE_SCHEMA
-    except Exception:
-        return False
-
 
 def make_baseline(events):
     state = {
@@ -1450,7 +1618,9 @@ def make_baseline(events):
     )
 
     BASELINE_FILE.write_text(
-        BASELINE_SCHEMA,
+        now_kst().isoformat(
+            timespec="seconds"
+        ),
         encoding="utf-8",
     )
 
@@ -1495,8 +1665,9 @@ def make_baseline(events):
         "Discord 알림을 보내지 않았습니다."
     )
 
-    # 기준값에서는 회차별 원본 필드를 전부 출력하지 않는다.
-    # 50일 스캔 요약과 개수만 남겨 Actions 로그가 잘리지 않게 한다.
+    log(
+        "기준값 상세 목록 출력은 로그 절약을 위해 생략합니다."
+    )
 
 
 # ============================================================
@@ -1573,22 +1744,32 @@ def process(
 
         # ----------------------------------------------------
         # 매진 / 마감은 알림 없음.
-        # 상태만 저장한다.
-        #
-        # 중요:
-        # 이 전체 알리미에서는 매진 후 다시 OPEN으로 바뀌어도
-        # 취소표 알림을 보내지 않는다.
-        # 취소표 감시는 별도 특정회차 전용 알리미가 담당한다.
+        # 매진 시각은 저장해서 이후 취소표 재오픈을 구분한다.
         # ----------------------------------------------------
 
         if current in {
             "SOLD_OUT",
             "CLOSED",
         }:
-            state[key] = record(
+            new_record = record(
                 show,
                 current,
             )
+
+            if current == "SOLD_OUT":
+                if (
+                    previous == "SOLD_OUT"
+                    and previous_record.get("sold_out_since_kst")
+                ):
+                    new_record["sold_out_since_kst"] = (
+                        previous_record["sold_out_since_kst"]
+                    )
+                else:
+                    new_record["sold_out_since_kst"] = (
+                        now_kst().isoformat(timespec="seconds")
+                    )
+
+            state[key] = new_record
             save_state(state)
             continue
 
@@ -1601,7 +1782,6 @@ def process(
         if current == "PREPARING":
             if previous in (
                 None,
-                "DETECTED",
                 "UNKNOWN",
                 "CLOSED",
                 "SOLD_OUT",
@@ -1621,22 +1801,53 @@ def process(
         elif current == "OPEN":
             if previous in (
                 None,
-                "DETECTED",
                 "UNKNOWN",
                 "PREPARING",
                 "CLOSED",
             ):
                 alert_status = "OPEN"
 
-            # 매진 -> 예매가능은 취소표일 수 있으므로
-            # 전체 알리미에서는 Discord 알림을 보내지 않고 상태만 갱신한다.
             elif previous == "SOLD_OUT":
-                state[key] = record(
-                    show,
-                    "OPEN",
+                sold_out_since_text = previous_record.get(
+                    "sold_out_since_kst"
                 )
-                save_state(state)
-                continue
+                sold_out_seconds = None
+
+                if sold_out_since_text:
+                    try:
+                        sold_out_since = datetime.fromisoformat(
+                            sold_out_since_text
+                        )
+                        sold_out_seconds = (
+                            now_kst() - sold_out_since
+                        ).total_seconds()
+                    except Exception:
+                        sold_out_seconds = None
+
+                # 120초 이상 매진 상태였다가 Y로 돌아오면 취소표로 구분.
+                # 구버전 state에 매진 시작 시각이 없으면 최초 1회는 허용.
+                if (
+                    sold_out_seconds is None
+                    or sold_out_seconds >= CANCEL_REARM_SECONDS
+                ):
+                    alert_status = "CANCEL_TICKET"
+                else:
+                    log(
+                        f"짧은 매진↔예매가능 흔들림 억제: "
+                        f"{event_name(show)} / "
+                        f"{show.get('movie')} / "
+                        f"{show.get('date')} "
+                        f"{show.get('time')} / "
+                        f"매진 유지 {sold_out_seconds:.0f}초 "
+                        f"< {CANCEL_REARM_SECONDS}초"
+                    )
+
+                    state[key] = record(
+                        show,
+                        "OPEN",
+                    )
+                    save_state(state)
+                    continue
 
         if alert_status:
             try:
@@ -1655,9 +1866,11 @@ def process(
                 )
                 continue
 
+            # 취소표 알림도 현재 실제 상태는 OPEN으로 저장해야
+            # 다음 사이클에 같은 알림이 반복되지 않는다.
             stored_status = (
                 "OPEN"
-                if alert_status == "OPEN"
+                if alert_status in {"OPEN", "CANCEL_TICKET"}
                 else "PREPARING"
             )
 
@@ -1671,11 +1884,14 @@ def process(
             if alert_status == "PREPARING":
                 transition = "상영준비중"
                 icon = "⏳"
+            elif alert_status == "CANCEL_TICKET":
+                transition = "취소표가 생겼습니다"
+                icon = "🎟️"
             elif previous == "PREPARING":
-                transition = "상영준비중 -> 예매가 열렸습니다"
+                transition = "상영준비중 -> 예매 오픈"
                 icon = "🚨"
             else:
-                transition = "예매가 열렸습니다"
+                transition = "예매 오픈"
                 icon = "🚨"
 
             log(
@@ -1712,24 +1928,21 @@ def main():
     log("이벤트 코드: AccompanyTypeCode 30=무대인사, 40=GV")
     log("예매 상태: Y=예매 가능 / E=매진 / N=예매 불가·마감")
     log("상영준비중: API의 상영준비중/예매준비중 문구를 감지")
-    log("선행 감지: API에서 GV/무대인사 신호가 처음 보이면 Discord에도 전송")
-    log("취소표 감지: 사용 안 함 (특정 회차 전용 알리미로 분리)")
-    log("감시 범위: 오늘 ~ +49일 (50일 전체)")
-    log(f"목표 감시 주기: {SCAN_INTERVAL:.0f}초 (50일 전체 순차 조회)")
-    log("상태 로그: 첫 50일 스캔 직후 + 이후 10분마다 요약 / 날짜별 정상 API 로그 생략")
+    log("선행 진단: API에서 GV/무대인사 신호가 처음 보이면 Actions 로그에 표시")
+    log("취소표: 매진 후 재오픈 시 '취소표가 생겼습니다'로 별도 알림")
+    log("감시 범위: 오늘 ~ +42일 (43일 전체)")
+    log(
+        "분산 감시: 오늘 5분 / 내일(+1) 20초 / +2~+4일 90초 / "
+        "+5~+14일 30초 / +15~+30일 60초 / +31~+42일 5분 / "
+        "상영준비중·매진 날짜 20초"
+    )
     log(f"RUN SECONDS: {RUN_SECONDS}")
+    log(f"상태 로그: 첫 43일 확인 완료 즉시 + 이후 {STATUS_LOG_SECONDS // 60}분마다 요약")
+    log("5분 고정 동시점검: KST 매시 00/05/10/.../55분에 +4~+21일 18일을 18개 worker로 동시 확인")
+    log("정상 날짜별 API 로그: 생략 (오류/새 신호/상태 변화는 즉시 표시)")
     log("=" * 60)
 
-    # 현재 실제 GV 1개를 Discord로 보내는 수동 테스트.
-    # baseline/state는 읽거나 수정하지 않는다.
-    if os.getenv(
-        "LOTTE_EXISTING_GV_TEST",
-        "",
-    ).strip().lower() in {"1", "true", "yes", "on"}:
-        send_existing_gv_test()
-        return
-
-    # 기존 강제 Discord 테스트. baseline/state는 건드리지 않음.
+    # 강제 Discord 테스트. baseline/state는 건드리지 않음.
     if (
         os.getenv(
             "LOTTE_ALERT_TEST",
@@ -1742,92 +1955,220 @@ def main():
 
     state = load_state()
 
-    # 최초 실행 또는 감지키/분류방식이 바뀐 버전은 50일 전체를
-    # 다시 기준값으로 등록한다. 이 재기준화 실행에서는 Discord 알림을 보내지 않는다.
-    # 예전 state의 키와 새 코드의 키가 달라 기존 회차가 '신규'로 오인되는 것을 방지한다.
-    if not baseline_schema_ok():
-        log("")
-        log("기준값 버전이 없거나 이전 버전입니다. 현재 50일 회차를 알림 없이 다시 기준값으로 등록합니다.")
-        events, mode, errors = scan_all_50_days()
+    # 최초 정상 실행은 43일 전체 baseline.
+    if not BASELINE_FILE.exists():
+        events, mode, errors = scan_all_43_days()
+        log(f"FETCH MODE: {mode}")
+        log(f"SCAN ERRORS: {errors}")
         make_baseline(events)
-        baseline_state = load_state()
-        log_compact_summary(
-            events,
-            mode,
-            errors,
-            baseline_state,
-            prefix="첫 50일 스캔 완료",
-        )
         return
 
     started = time.time()
-    cycle = 0
-    last_status_log = 0.0
+
+    heartbeat_started = started
+    heartbeat_requests = 0
+    heartbeat_success = 0
+    heartbeat_errors = 0
+    heartbeat_alerts = 0
+
+    dates = make_dates(0, TOTAL_DAYS)
+    date_event_cache = {}
+
+    # 실행 직후 43일 전체를 한 번 확인해 현재 캐시를 만든다.
+    initial_started = time.time()
+    initial_events, initial_mode, initial_errors = scan_all_43_days()
+
+    for date in dates:
+        date_event_cache[date] = {
+            key: event
+            for key, event in initial_events.items()
+            if event.get("date") == date
+        }
+
+    log_new_event_diagnostics(initial_events, state)
+    initial_sent, _ = process(initial_events, state)
+    save_state(state)
+
+    initial_elapsed = time.time() - initial_started
+    initial_counts = counts(initial_events)
+
+    log(
+        f"✅ 첫 43일 감시 확인 완료 | {initial_elapsed:.1f}초 | "
+        f"GV {initial_counts['GV']} | 무대인사 {initial_counts['STAGE']} | "
+        f"상영준비중 {initial_counts['PREPARING']} | "
+        f"예매가능 {initial_counts['OPEN']} | 매진 {initial_counts['SOLD_OUT']} | "
+        f"오류 {initial_errors} | 알림 {initial_sent}"
+    )
+
+    now_mono = time.monotonic()
+    next_due = {}
+
+    today_date = now_kst().date()
+    for date in dates:
+        target = datetime.strptime(date, "%Y-%m-%d").date()
+        offset = (target - today_date).days
+        interval = base_interval_for_offset(offset)
+
+        # 첫 요청이 한 순간에 다시 몰리지 않도록 각 구간에 자연스럽게 분산.
+        # 이미 방금 43일 전체를 확인했으므로 interval 안에서 나눠 시작한다.
+        same_band = [
+            d for d in dates
+            if base_interval_for_offset(
+                (datetime.strptime(d, "%Y-%m-%d").date() - today_date).days
+            ) == interval
+        ]
+        idx = same_band.index(date)
+        spread = interval * (idx + 1) / max(1, len(same_band))
+        next_due[date] = now_mono + spread
+
+    # 실행 직후 같은 5분 슬롯은 다시 동시점검하지 않고 다음 경계부터.
+    fixed_now = now_kst()
+    last_fixed_scan_slot = (
+        fixed_now.strftime("%Y%m%d%H"),
+        fixed_now.minute // FIXED_SAFETY_SCAN_MINUTES,
+    )
+
+    log(
+        "📡 날짜별 분산 감시 시작 | 오늘 5분 / 내일(+1) 20초 / "
+        "+2~+4일 90초 / +5~+14일 30초 / +15~+30일 60초 / "
+        "+31~+42일 5분 | 상영준비중·매진 날짜 20초"
+    )
+    log(
+        "🔎 5분 고정 동시점검 유지 | 매시 00/05/10/.../55분 | "
+        "+4~+21일 18일 완전 동시"
+    )
 
     while time.time() - started < RUN_SECONDS:
-        cycle += 1
-        cycle_started = time.time()
-
-        try:
-            cycle_events, mode, errors = scan_all_50_days()
-
-            # process 전에 실행해야 state에 아직 없는 '최초 API 신호'를 잡을 수 있다.
-            # 새 신호 / 상태 변화 / Discord 오류는 아래 함수들에서 즉시 로그된다.
-            early_detected, early_discord_sent = log_new_event_diagnostics(
-                cycle_events,
-                state,
-            )
-
-            sent, unknown_logged = process(
-                cycle_events,
-                state,
-            )
-
-            save_state(state)
-
-            # 조회 오류는 10분을 기다리지 않고 즉시 표시.
-            if errors:
-                log(
-                    f"⚠️ 50일 스캔 오류: {errors}건 / "
-                    f"FETCH MODE={mode}"
-                )
-
-            # 정상 상태는 첫 50일 스캔 직후 한 번,
-            # 이후에는 10분마다 한 줄 요약만 출력.
-            now_mono = time.time()
-            if last_status_log == 0.0 or now_mono - last_status_log >= LOG_INTERVAL:
-                log_compact_summary(
-                    cycle_events,
-                    mode,
-                    errors,
-                    state,
-                    prefix="첫 50일 스캔 완료" if last_status_log == 0.0 else "정상 감시중",
-                )
-                last_status_log = now_mono
-
-        except Exception as error:
-            log(
-                f"SCAN/PROCESS ERROR: "
-                f"{type(error).__name__}: {error}"
-            )
-
-        elapsed = time.time() - cycle_started
         remaining = RUN_SECONDS - (time.time() - started)
-
         if remaining <= 0:
             break
 
-        wait = min(
-            max(
-                0.0,
-                SCAN_INTERVAL - elapsed,
-            ),
-            remaining,
+        # --------------------------------------------------------
+        # 5분 고정 +4~+21일 18일 동시점검
+        # --------------------------------------------------------
+        fixed_now = now_kst()
+        fixed_scan_slot = (
+            fixed_now.strftime("%Y%m%d%H"),
+            fixed_now.minute // FIXED_SAFETY_SCAN_MINUTES,
         )
 
-        if wait > 0:
-            time.sleep(wait)
-        # 50일 조회 자체가 10초를 넘으면 대기 없이 바로 다음 사이클.
+        if fixed_scan_slot != last_fixed_scan_slot:
+            last_fixed_scan_slot = fixed_scan_slot
+            fixed_started = time.time()
+
+            try:
+                fixed_events, fixed_mode, fixed_errors = scan_fixed_18_days_concurrent()
+
+                # 성공한 날짜들만 cache 반영. 실패 날짜는 기존 cache 유지.
+                successful_dates = {
+                    event.get("date")
+                    for event in fixed_events.values()
+                    if event.get("date")
+                }
+                for date in successful_dates:
+                    date_event_cache[date] = {
+                        key: event
+                        for key, event in fixed_events.items()
+                        if event.get("date") == date
+                    }
+
+                log_new_event_diagnostics(fixed_events, state)
+                fixed_sent, _ = process(fixed_events, state)
+                save_state(state)
+
+                fixed_elapsed = time.time() - fixed_started
+                fixed_counts = counts(fixed_events)
+
+                heartbeat_requests += FIXED_CONCURRENT_DAYS
+                heartbeat_success += max(0, FIXED_CONCURRENT_DAYS - fixed_errors)
+                heartbeat_errors += fixed_errors
+                heartbeat_alerts += fixed_sent
+
+                icon = "🔎" if fixed_errors == 0 else "⚠️"
+                log(
+                    f"{icon} {fixed_now.strftime('%H:%M')} "
+                    f"5분 고정 18일 동시점검 완료 | +4~+21일 | "
+                    f"GV {fixed_counts['GV']} | 무대인사 {fixed_counts['STAGE']} | "
+                    f"상영준비중 {fixed_counts['PREPARING']} | "
+                    f"예매가능 {fixed_counts['OPEN']} | 매진 {fixed_counts['SOLD_OUT']} | "
+                    f"오류 {fixed_errors} | 알림 {fixed_sent} | "
+                    f"{fixed_elapsed:.1f}초"
+                )
+
+            except Exception as fixed_error:
+                heartbeat_errors += 1
+                log(
+                    f"⚠️ {fixed_now.strftime('%H:%M')} "
+                    f"5분 고정 18일 동시점검 실패 | "
+                    f"{type(fixed_error).__name__}: {fixed_error}"
+                )
+
+        # --------------------------------------------------------
+        # 날짜별 분산 감시: 지금 due인 날짜 1개씩 처리
+        # --------------------------------------------------------
+        now_mono = time.monotonic()
+        due_dates = [
+            date for date in dates
+            if next_due.get(date, 0) <= now_mono
+        ]
+
+        if due_dates:
+            due_dates.sort(key=lambda d: next_due.get(d, 0))
+            date = due_dates[0]
+
+            events, error = scan_one_date_with_retry(date)
+            heartbeat_requests += 1
+
+            if error is not None or events is None:
+                heartbeat_errors += 1
+                log(
+                    f"⚠️ 날짜 조회 실패(기존 상태 유지) | {date} | "
+                    f"{type(error).__name__}: {error}"
+                )
+            else:
+                heartbeat_success += 1
+                date_event_cache[date] = events
+
+                log_new_event_diagnostics(events, state)
+                sent, _ = process(events, state)
+                save_state(state)
+                heartbeat_alerts += sent
+
+            # 조회가 끝난 현재 상태 기준으로 다음 주기 결정.
+            interval = interval_for_date(date, state)
+            next_due[date] = time.monotonic() + interval
+            continue
+
+        # --------------------------------------------------------
+        # 10분 요약
+        # --------------------------------------------------------
+        heartbeat_elapsed = time.time() - heartbeat_started
+        if heartbeat_elapsed >= STATUS_LOG_SECONDS:
+            all_cached_events = {}
+            for events in date_event_cache.values():
+                all_cached_events.update(events)
+
+            c = counts(all_cached_events)
+            minutes = max(1, round(heartbeat_elapsed / 60))
+            icon = "💚" if heartbeat_errors == 0 else "⚠️"
+
+            log(
+                f"{icon} 감시중 | 최근 {minutes}분 날짜조회 "
+                f"{heartbeat_requests}회 / 성공 {heartbeat_success}회 | "
+                f"43일 캐시 | GV {c['GV']} | 무대인사 {c['STAGE']} | "
+                f"상영준비중 {c['PREPARING']} | 예매가능 {c['OPEN']} | "
+                f"매진 {c['SOLD_OUT']} | 오류 {heartbeat_errors} | "
+                f"알림 {heartbeat_alerts} | "
+                f"{now_kst().strftime('%H:%M:%S KST')}"
+            )
+
+            heartbeat_started = time.time()
+            heartbeat_requests = 0
+            heartbeat_success = 0
+            heartbeat_errors = 0
+            heartbeat_alerts = 0
+
+        time.sleep(IDLE_SLEEP)
 
     log("")
     log("=" * 60)
