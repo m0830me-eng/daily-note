@@ -53,7 +53,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "7d9ecbcf893ff31907c2578ce0a63ca012dd8ac2": {
     "status": "EARLY",
@@ -67,7 +67,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "1964eb54b8f81eb539d225a4a5158ddcfaa05a77": {
     "status": "EARLY",
@@ -81,7 +81,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "e2ba506003bc1c456c1b9abfc5b3e459e02515fb": {
     "status": "EARLY",
@@ -95,7 +95,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "2aa8176268fd36f1a68251eb494cf00e564b6e29": {
     "status": "EARLY",
@@ -109,7 +109,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "0c7fc223f317fdb40328a3f739279180e0db0a7c": {
     "status": "OPEN",
@@ -123,7 +123,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "2bdbe9b7ace39fc5043f4d150a15c1dc47bee147": {
     "status": "OPEN",
@@ -137,7 +137,7 @@
     "play_sequence": "5",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "e9ffbd169636984cd8d7e849ef339b0998fdadb8": {
     "status": "EARLY",
@@ -151,7 +151,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "bc85e2bd47b2c44c75a0be0750148726c1f55163": {
     "status": "EARLY",
@@ -165,7 +165,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "8ddbab64a351c5fd861e23a37cdb67af14e5ae0d": {
     "status": "OPEN",
@@ -179,7 +179,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "5a68f693f0605f6c86616980d807976effb6e151": {
     "status": "OPEN",
@@ -193,7 +193,7 @@
     "play_sequence": "5",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "d61808fddeb1ac1f6f2e17b3c903bddc72477ce0": {
     "status": "EARLY",
@@ -207,7 +207,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "655ec12270a40120dfdb43b55b8cb2e05d8f53cd": {
     "status": "EARLY",
@@ -221,7 +221,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "c5fc8afea3650338533b69d3aacd7c3b7cbdcea5": {
     "status": "OPEN",
@@ -235,7 +235,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "7c73df01391a1282b26cb7dcddaf5a93aedf86e2": {
     "status": "SOLD_OUT",
@@ -249,7 +249,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=E",
     "raw_booking_code": "E",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "446f34ed07c0498673a67f9004d2ef27ef428c36": {
     "status": "SOLD_OUT",
@@ -263,7 +263,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=E",
     "raw_booking_code": "E",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "aea9f1d20ba4adcefccf57f421429e3afc0d34a0": {
     "status": "SOLD_OUT",
@@ -277,7 +277,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=E",
     "raw_booking_code": "E",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "59d78000884cd9e0280ead64bbc68084f3bb4899": {
     "status": "EARLY",
@@ -291,7 +291,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "b235b6cf69bcf50660e964134da3abd68273e392": {
     "status": "EARLY",
@@ -305,7 +305,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "06440880eb4c0024127ff6dbf99ae9ecc30ae7da": {
     "status": "OPEN",
@@ -319,7 +319,7 @@
     "play_sequence": "3",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "30a61967c10e526a0c090f3c62ba435b2b0c6ef6": {
     "status": "OPEN",
@@ -333,7 +333,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "5195e3135e7b64cc3339760275762c0944e17562": {
     "status": "EARLY",
@@ -347,7 +347,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "5184fccfbca69f0597f7935cad45bad17b946eca": {
     "status": "OPEN",
@@ -361,7 +361,7 @@
     "play_sequence": "3",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "9cbbe28c42c0f16b68a07d4b83990d836daa7d2e": {
     "status": "OPEN",
@@ -375,7 +375,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "8eab3b66084cb9d0072fec94b68bcf1b0448bf98": {
     "status": "EARLY",
@@ -389,7 +389,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "32ac35437ee229d14f103156dcd99f976b971528": {
     "status": "OPEN",
@@ -403,7 +403,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "81723c186615f45c33a09e9d46fcf8f4f3d4cd9d": {
     "status": "OPEN",
@@ -417,7 +417,7 @@
     "play_sequence": "5",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "22e3344f373bb99e5aab70261d1cb62df42fd81b": {
     "status": "EARLY",
@@ -431,7 +431,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "e1a5c931f11071e0ecf05114b3e5bcfe3ce6d0c2": {
     "status": "EARLY",
@@ -445,7 +445,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "0ec5ba2cf296f1f13c556bb80deeec889229aeff": {
     "status": "EARLY",
@@ -459,7 +459,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "84d55e2bc850201dc43eb13af632ca575d589be7": {
     "status": "EARLY",
@@ -473,7 +473,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "3e488c1b7309d31ac0f13fd9d1b024b46238e9dc": {
     "status": "OPEN",
@@ -487,7 +487,7 @@
     "play_sequence": "3",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "a1f834af1fcf0767b33a895667a06165b42899b9": {
     "status": "OPEN",
@@ -501,7 +501,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "b07154724748612ac981e70e5a33afc37e24ddf4": {
     "status": "EARLY",
@@ -515,7 +515,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "3f4b5daa039c9fb290189e12161b54843cd81295": {
     "status": "EARLY",
@@ -529,7 +529,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "f2d3467a35321e75074a1ae75d4c9294912ab5ac": {
     "status": "EARLY",
@@ -543,7 +543,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "8231ce47ed1b75ae5a2f2daf957066579feae923": {
     "status": "EARLY",
@@ -557,7 +557,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "d293f9fb5cdee97ab2bb7383d35e1c4c5ef1ff97": {
     "status": "EARLY",
@@ -571,7 +571,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "4e54acf0cafe6dfb8ad64887af1a3cb843eb576c": {
     "status": "EARLY",
@@ -585,7 +585,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "b64a4da5884c70c3eff1f5fd8c18e9a813734536": {
     "status": "EARLY",
@@ -599,7 +599,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "196104148202c8ea89cd8d46d7fc4ba8608d93ad": {
     "status": "EARLY",
@@ -613,7 +613,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "c082a6d467c20923f4efe0b5434b1d26898134a5": {
     "status": "EARLY",
@@ -627,7 +627,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "44665348351ad48b84ffc4d55b9d6c4727abda6f": {
     "status": "EARLY",
@@ -641,7 +641,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "a1c13d6eb5fb2eb6b648b90a9f5f8914f49f21c1": {
     "status": "EARLY",
@@ -655,7 +655,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "2210c549c27cbb3f6e739762ecf95c29de36e26c": {
     "status": "OPEN",
@@ -669,7 +669,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "7fa8662083be1e0ee8a69c530e1d67e7ef5254ca": {
     "status": "OPEN",
@@ -683,7 +683,7 @@
     "play_sequence": "5",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "22643e6510efc8d89bff4af4984bd0ad6aa7bb62": {
     "status": "EARLY",
@@ -697,7 +697,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "029ace4a4cc1bff85f533a1ade38e8dd56831e27": {
     "status": "EARLY",
@@ -711,7 +711,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "cadf968c8154c64a721de110399ff15e0e36a114": {
     "status": "EARLY",
@@ -725,7 +725,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "06d06655bc7c5412c866b59e473225d438e9ec5f": {
     "status": "EARLY",
@@ -739,7 +739,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "47df41b4bcb113cbd9e05125db2e8e68b90149d8": {
     "status": "EARLY",
@@ -753,7 +753,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "c12747dcf49c8d26dd0b95fc5ac45663594b6163": {
     "status": "OPEN",
@@ -767,7 +767,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "fb7928b06a62407d672e0df9c855cefaec12cfff": {
     "status": "OPEN",
@@ -781,7 +781,7 @@
     "play_sequence": "5",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "4642e4d2e8db9f6791e45668fe4e4e81b0e9af2d": {
     "status": "EARLY",
@@ -795,7 +795,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "f0a91bc860a986a8a08d2ee79a46944602b0d02e": {
     "status": "EARLY",
@@ -809,7 +809,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "0fadbb4344bb2da5662770dc45d85b3ce7d1d691": {
     "status": "OPEN",
@@ -823,7 +823,7 @@
     "play_sequence": "3",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "f164880718d730ef22264c1cc0266f1bfdbe31c1": {
     "status": "OPEN",
@@ -837,7 +837,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "f6889891600437fc8d2650e203698838a6fffd23": {
     "status": "EARLY",
@@ -851,7 +851,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "c99da67df46b305702a14dc7e6576308258aaf56": {
     "status": "EARLY",
@@ -865,7 +865,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "4f018db2c942d92b03bdd0a4af08ee360707cf6d": {
     "status": "EARLY",
@@ -879,10 +879,10 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "9263d9439bf01fc4ac2f76e089e18909ca60bdb7": {
-    "status": "OPEN",
+    "status": "SOLD_OUT",
     "event_type": "GV",
     "date": "2026-09-11",
     "movie": "아버지의 집밥",
@@ -891,9 +891,9 @@
     "screen": "14관",
     "screen_id": "101614",
     "play_sequence": "",
-    "booking_state_source": "IsBookingYN=Y",
-    "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "booking_state_source": "IsBookingYN=E",
+    "raw_booking_code": "E",
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "777ba3741ee51d3ddabbe46e0dc84d8dbf7a490f": {
     "status": "OPEN",
@@ -907,7 +907,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "35908db7ce9bc930965e6a0588090f5248c9272c": {
     "status": "OPEN",
@@ -921,7 +921,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "53ad3fb38667ebfd80f9e2b25160c7f34aaa825c": {
     "status": "OPEN",
@@ -935,7 +935,7 @@
     "play_sequence": "3",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "1904118521d6027de6d5c7441b5d8abdbbbdef44": {
     "status": "OPEN",
@@ -949,7 +949,7 @@
     "play_sequence": "2",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "d01de4921371057163e40ceea1acbcdc7ed0255c": {
     "status": "OPEN",
@@ -963,7 +963,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "e6b9230351eab99e3f2762fcd9e650ddcb7d44ac": {
     "status": "OPEN",
@@ -977,7 +977,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "f9e3708a5ba66792c8c9da2f77e0a86ec119e650": {
     "status": "OPEN",
@@ -991,7 +991,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "cdbe7ea8587c710ed9c155fc0fb15d98f7f3fa9e": {
     "status": "OPEN",
@@ -1005,7 +1005,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:35:59+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "8a0e1820b9e00976f06c603ebfa6865147bbcc14": {
     "status": "OPEN",
@@ -1019,7 +1019,7 @@
     "play_sequence": "5",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "07263804bb7a64942e2c443ef75f465208ff5bfc": {
     "status": "OPEN",
@@ -1033,7 +1033,7 @@
     "play_sequence": "5",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "3bbf9c3176cacdc3677ed61c13a75d3041f376f7": {
     "status": "OPEN",
@@ -1047,7 +1047,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "d473ed84ef10abb45599e8400c6e7371e6e4d6b9": {
     "status": "OPEN",
@@ -1061,7 +1061,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "148def218d03ffb7d79308bdbf1cadcebca69e55": {
     "status": "OPEN",
@@ -1075,7 +1075,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "00920ad43c1982dfe490c0f153ff2aba1a36eb0e": {
     "status": "OPEN",
@@ -1089,7 +1089,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "38cd5ac5e2a4fe165eafcce885ccffe809fb6798": {
     "status": "OPEN",
@@ -1103,7 +1103,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "29e0a22bb1b84d27139dbf256ee94dcaff7349f1": {
     "status": "OPEN",
@@ -1117,7 +1117,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "6e5b8aa5716a10119959066786c9642f74abce04": {
     "status": "OPEN",
@@ -1131,7 +1131,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "81ec6c4011a7b64a2d4932f6707e865730bf210a": {
     "status": "OPEN",
@@ -1145,7 +1145,7 @@
     "play_sequence": "3",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "bb151e490d6420207841d664c0f0c440b927c477": {
     "status": "OPEN",
@@ -1159,7 +1159,7 @@
     "play_sequence": "3",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "6dbf5e80deef8cdd3df8af89b23d1ec489ece2bf": {
     "status": "OPEN",
@@ -1173,7 +1173,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "5f500a789b6d7b5191e40082d7494bf7e4a18625": {
     "status": "OPEN",
@@ -1187,7 +1187,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "680759fb6d64963dee28848e0327757903281026": {
     "status": "OPEN",
@@ -1201,7 +1201,7 @@
     "play_sequence": "4",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "c594d3b857c9e5ed02cf9621d13356126f283cea": {
     "status": "OPEN",
@@ -1215,7 +1215,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "5f6ae2b377146c560335c763192dcf8de5a8e7a8": {
     "status": "OPEN",
@@ -1229,7 +1229,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "0529932d2a126442b5aedd0c3ad04185a9c74b5f": {
     "status": "OPEN",
@@ -1243,7 +1243,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "2564e6edf8bd057b7ae1066ab121bfc056fa1cd8": {
     "status": "OPEN",
@@ -1257,7 +1257,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "acb3a071bb8b0507cc9df43a994db9a818b0f1d7": {
     "status": "OPEN",
@@ -1271,7 +1271,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "c7381afadefa071c38ff855d98ea63d3cdd657b0": {
     "status": "OPEN",
@@ -1285,7 +1285,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "96ce342dce7002ee6bbdc9538250bf48524ff227": {
     "status": "OPEN",
@@ -1299,7 +1299,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "ec8aba3b3d37cdef2f6ec5c8c81cfcf2774e8851": {
     "status": "OPEN",
@@ -1313,7 +1313,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "e9c560759cfda8a0ddb77d3466ceefb1d2f22e4f": {
     "status": "OPEN",
@@ -1327,7 +1327,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "e670be5ac582c4cfbe05105435f63b6fe74fb3b5": {
     "status": "OPEN",
@@ -1341,7 +1341,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "6429fb0243ef86391efe782acbdda3e1be0ec3b1": {
     "status": "OPEN",
@@ -1355,7 +1355,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "47890be73ec9c74b049250abbee237ea86cfaa05": {
     "status": "OPEN",
@@ -1369,7 +1369,7 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   },
   "c0bd1e5811b4de5795417994c4b4bafb8ee60ed9": {
     "status": "OPEN",
@@ -1383,6 +1383,6 @@
     "play_sequence": "",
     "booking_state_source": "IsBookingYN=Y",
     "raw_booking_code": "Y",
-    "updated_at_kst": "2026-09-03T22:36:00+09:00"
+    "updated_at_kst": "2026-09-03T23:59:05+09:00"
   }
 }
