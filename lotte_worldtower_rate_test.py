@@ -1699,6 +1699,34 @@ def make_baseline(events):
     )
 
 
+
+def _semantic_show_identity(show):
+    """
+    롯데 내부 PlaySequence가 재배정되어도 같은 실제 회차로 본다.
+    사용자에게 보이는 안정적인 회차 기준:
+    날짜 + 행사종류 + 영화 + 상영관 + 시작시간
+    """
+    return (
+        norm(show.get("date")),
+        norm(show.get("event_type")),
+        norm(show.get("movie_code")) or compact(show.get("movie")),
+        norm(show.get("screen_id")) or compact(show.get("screen")),
+        norm(show.get("time")).replace(":", ""),
+    )
+
+
+def _find_semantic_previous(show, state):
+    target = _semantic_show_identity(show)
+
+    for old_key, record_item in state.items():
+        if not isinstance(record_item, dict):
+            continue
+        if _semantic_show_identity(record_item) == target:
+            return old_key, record_item
+
+    return None, None
+
+
 # ============================================================
 # State transition processing
 # ============================================================
@@ -1717,10 +1745,25 @@ def process(
             "UNKNOWN",
         )
 
-        previous_record = (
-            state.get(key)
-            or {}
-        )
+        previous_record = state.get(key)
+        semantic_previous_key = None
+
+        # PlaySequence 같은 롯데 내부 회차번호가 바뀌어 key가 달라져도
+        # 날짜/행사종류/영화/상영관/시작시간이 같으면 같은 회차로 이어받는다.
+        if not isinstance(previous_record, dict):
+            (
+                semantic_previous_key,
+                semantic_previous_record,
+            ) = _find_semantic_previous(
+                show,
+                state,
+            )
+
+            if semantic_previous_record is not None:
+                previous_record = semantic_previous_record
+
+        if not isinstance(previous_record, dict):
+            previous_record = {}
 
         previous = previous_record.get(
             "status"
